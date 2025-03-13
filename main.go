@@ -52,6 +52,7 @@ func (p *PubSubClient) Publish(in *PublishRequest) error {
 }
 
 type SubscribeRequest struct {
+	Topic       string
 	Subcription string
 	Outch       chan []byte
 	Errorch     chan error
@@ -66,6 +67,7 @@ type SubscribeResponse struct {
 func (p *PubSubClient) Subscribe(in *SubscribeRequest) {
 	// Create a new SubscribeRequest
 	req := &pb.SubscribeRequest{
+		Topic:        in.Topic,
 		Subscription: in.Subcription,
 	}
 
