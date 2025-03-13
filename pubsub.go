@@ -8,11 +8,6 @@ import (
 	"google.golang.org/grpc"
 )
 
-type PubSubClient struct {
-	conn       *grpc.ClientConn
-	clientconn *pb.PubSubServiceClient
-}
-
 func (p *PubSubClient) Close() {
 	if p.conn != nil {
 		p.conn.Close()
@@ -29,12 +24,6 @@ func New() (*PubSubClient, error) {
 	return &PubSubClient{conn: conn, clientconn: &clientconn}, nil
 }
 
-type PublishRequest struct {
-	Topic      string
-	Message    string
-	Attributes map[string]string
-}
-
 func (p *PubSubClient) Publish(in *PublishRequest) error {
 	// Create a new PublishRequest
 	req := &pb.PublishRequest{
@@ -49,19 +38,6 @@ func (p *PubSubClient) Publish(in *PublishRequest) error {
 	}
 
 	return nil
-}
-
-type SubscribeRequest struct {
-	Topic       string
-	Subcription string
-	Outch       chan []byte
-	Errorch     chan error
-}
-
-type SubscribeResponse struct {
-	Id         string
-	Payload    string
-	Attributes map[string]string
 }
 
 func (p *PubSubClient) Subscribe(in *SubscribeRequest) {
