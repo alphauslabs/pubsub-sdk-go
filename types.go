@@ -28,3 +28,9 @@ type SubscribeResponse struct {
 	Payload    string
 	Attributes map[string]string
 }
+
+type CreateSubscriptionRequest struct {
+	Topic        string
+	Subscription string
+	NoAutoExtend bool // if true, messages will not be auto extended, recommended to be false
+}

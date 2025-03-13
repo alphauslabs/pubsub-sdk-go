@@ -73,6 +73,15 @@ func (p *PubSubClient) Subscribe(in *SubscribeRequest) {
 	}
 }
 
+func (p *PubSubClient) SendAck(id, subscription string) error {
+	_, err := (*p.clientconn).Acknowledge(context.Background(), &pb.AcknowledgeRequest{Id: id, Subscription: subscription})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (p *PubSubClient) CreateTopic(topic string) error {
 	req := &pb.CreateTopicRequest{
 		Name: topic,
@@ -86,10 +95,11 @@ func (p *PubSubClient) CreateTopic(topic string) error {
 	return nil
 }
 
-func (p *PubSubClient) CreateSubscription(topic, subscription string) error {
+func (p *PubSubClient) CreateSubscription(in *CreateSubscriptionRequest) error {
 	req := &pb.CreateSubscriptionRequest{
-		Topic: topic,
-		Name:  subscription,
+		Topic:        in.Topic,
+		Name:         in.Subscription,
+		NoAutoExtend: in.NoAutoExtend,
 	}
 
 	_, err := (*p.clientconn).CreateSubscription(context.Background(), req)
