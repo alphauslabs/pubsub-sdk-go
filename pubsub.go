@@ -72,3 +72,30 @@ func (p *PubSubClient) Subscribe(in *SubscribeRequest) {
 		in.Outch <- b
 	}
 }
+
+func (p *PubSubClient) CreateTopic(topic string) error {
+	req := &pb.CreateTopicRequest{
+		Name: topic,
+	}
+
+	_, err := (*p.clientconn).CreateTopic(context.Background(), req)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p *PubSubClient) CreateSubscription(topic, subscription string) error {
+	req := &pb.CreateSubscriptionRequest{
+		Topic: topic,
+		Name:  subscription,
+	}
+
+	_, err := (*p.clientconn).CreateSubscription(context.Background(), req)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
