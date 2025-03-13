@@ -65,6 +65,10 @@ type SubscribeResponse struct {
 }
 
 func (p *PubSubClient) Subscribe(in *SubscribeRequest) {
+	defer func() {
+		close(in.Errorch)
+		close(in.Outch)
+	}()
 	// Create a new SubscribeRequest
 	req := &pb.SubscribeRequest{
 		Topic:        in.Topic,
