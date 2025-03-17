@@ -24,7 +24,7 @@ func New() (*PubSubClient, error) {
 	return &PubSubClient{conn: conn, clientconn: &clientconn}, nil
 }
 
-func (p *PubSubClient) Publish(in *PublishRequest) error {
+func (p *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 	// Create a new PublishRequest
 	req := &pb.PublishRequest{
 		Topic:      in.Topic,
@@ -32,7 +32,7 @@ func (p *PubSubClient) Publish(in *PublishRequest) error {
 		Attributes: in.Attributes,
 	}
 
-	_, err := (*p.clientconn).Publish(context.Background(), req)
+	_, err := (*p.clientconn).Publish(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -40,7 +40,7 @@ func (p *PubSubClient) Publish(in *PublishRequest) error {
 	return nil
 }
 
-func (p *PubSubClient) Subscribe(in *SubscribeRequest) {
+func (p *PubSubClient) Subscribe(ctx context.Context, in *SubscribeRequest) {
 	defer func() {
 		close(in.Errorch)
 		close(in.Outch)
@@ -51,7 +51,7 @@ func (p *PubSubClient) Subscribe(in *SubscribeRequest) {
 		Subscription: in.Subcription,
 	}
 
-	stream, err := (*p.clientconn).Subscribe(context.Background(), req)
+	stream, err := (*p.clientconn).Subscribe(ctx, req)
 	if err != nil {
 		in.Errorch <- err
 		return
@@ -73,8 +73,8 @@ func (p *PubSubClient) Subscribe(in *SubscribeRequest) {
 	}
 }
 
-func (p *PubSubClient) SendAck(id, subscription string) error {
-	_, err := (*p.clientconn).Acknowledge(context.Background(), &pb.AcknowledgeRequest{Id: id, Subscription: subscription})
+func (p *PubSubClient) SendAck(ctx context.Context, id, subscription string) error {
+	_, err := (*p.clientconn).Acknowledge(ctx, &pb.AcknowledgeRequest{Id: id, Subscription: subscription})
 	if err != nil {
 		return err
 	}
@@ -82,12 +82,12 @@ func (p *PubSubClient) SendAck(id, subscription string) error {
 	return nil
 }
 
-func (p *PubSubClient) CreateTopic(topic string) error {
+func (p *PubSubClient) CreateTopic(ctx context.Context, topic string) error {
 	req := &pb.CreateTopicRequest{
 		Name: topic,
 	}
 
-	_, err := (*p.clientconn).CreateTopic(context.Background(), req)
+	_, err := (*p.clientconn).CreateTopic(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -95,14 +95,14 @@ func (p *PubSubClient) CreateTopic(topic string) error {
 	return nil
 }
 
-func (p *PubSubClient) CreateSubscription(in *CreateSubscriptionRequest) error {
+func (p *PubSubClient) CreateSubscription(ctx context.Context, in *CreateSubscriptionRequest) error {
 	req := &pb.CreateSubscriptionRequest{
 		Topic:        in.Topic,
 		Name:         in.Subscription,
 		NoAutoExtend: in.NoAutoExtend,
 	}
 
-	_, err := (*p.clientconn).CreateSubscription(context.Background(), req)
+	_, err := (*p.clientconn).CreateSubscription(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -110,8 +110,8 @@ func (p *PubSubClient) CreateSubscription(in *CreateSubscriptionRequest) error {
 	return nil
 }
 
-func (p *PubSubClient) GetNumberOfMessages(topic string) ([]*GetNumberOfMessagesResponse, error) {
-	res, err := (*p.clientconn).GetMessagesInQueue(context.Background(), &pb.GetMessagesInQueueRequest{})
+func (p *PubSubClient) GetNumberOfMessages(ctx context.Context, topic string) ([]*GetNumberOfMessagesResponse, error) {
+	res, err := (*p.clientconn).GetMessagesInQueue(ctx, &pb.GetMessagesInQueueRequest{})
 	if err != nil {
 		return nil, err
 	}
