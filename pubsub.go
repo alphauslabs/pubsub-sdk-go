@@ -109,3 +109,20 @@ func (p *PubSubClient) CreateSubscription(in *CreateSubscriptionRequest) error {
 
 	return nil
 }
+
+func (p *PubSubClient) GetNumberOfMessages(topic string) ([]*GetNumberOfMessagesResponse, error) {
+	res, err := (*p.clientconn).GetMessagesInQueue(context.Background(), &pb.GetMessagesInQueueRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	ret := make([]*GetNumberOfMessagesResponse, 0)
+	for _, q := range res.InQueue {
+		ret = append(ret, &GetNumberOfMessagesResponse{
+			Subscription:             q.Subscription,
+			CurrentMessagesAvailable: q.Total,
+		})
+	}
+
+	return ret, nil
+}

@@ -34,3 +34,8 @@ type CreateSubscriptionRequest struct {
 	Subscription string
 	NoAutoExtend bool // if true, messages will not be auto extended, recommended to be false
 }
+
+type GetNumberOfMessagesResponse struct {
+	Subscription             string
+	CurrentMessagesAvailable int32
+}
