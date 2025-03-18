@@ -14,6 +14,7 @@ func (p *PubSubClient) Close() {
 	}
 }
 
+// New creates a new PubSub client.
 func New() (*PubSubClient, error) {
 	conn, err := grpc.Dial("10.146.0.27:50051", grpc.WithInsecure())
 	if err != nil {
@@ -24,6 +25,7 @@ func New() (*PubSubClient, error) {
 	return &PubSubClient{conn: conn, clientconn: &clientconn}, nil
 }
 
+// Publish a message to a given topic.
 func (p *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 	// Create a new PublishRequest
 	req := &pb.PublishRequest{
@@ -40,13 +42,13 @@ func (p *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 	return nil
 }
 
+// Subscribes to a subscription. Data will be sent to the Outch, while errors on Errch.
 func (p *PubSubClient) Subscribe(ctx context.Context, in *SubscribeRequest) {
 	defer func() {
 		close(in.Errorch)
 		close(in.Outch)
 	}()
 
-	// Create a new SubscribeRequest
 	req := &pb.SubscribeRequest{
 		Topic:        in.Topic,
 		Subscription: in.Subcription,
@@ -74,6 +76,7 @@ func (p *PubSubClient) Subscribe(ctx context.Context, in *SubscribeRequest) {
 	}
 }
 
+// Sends Acknowledgement for a given message, subscriber should call this everyime a message is done processing.
 func (p *PubSubClient) SendAck(ctx context.Context, id, subscription string) error {
 	_, err := (*p.clientconn).Acknowledge(ctx, &pb.AcknowledgeRequest{Id: id, Subscription: subscription})
 	if err != nil {
@@ -83,6 +86,7 @@ func (p *PubSubClient) SendAck(ctx context.Context, id, subscription string) err
 	return nil
 }
 
+// Creates a new topic with the given name.
 func (p *PubSubClient) CreateTopic(ctx context.Context, topic string) error {
 	req := &pb.CreateTopicRequest{
 		Name: topic,
@@ -96,6 +100,8 @@ func (p *PubSubClient) CreateTopic(ctx context.Context, topic string) error {
 	return nil
 }
 
+// Creates a new subscription with the given name and topic, optionally they can set NoAutoExtend to true, but this is not recommended.
+// Since PubSub defaults all subscriptions to auto extend.
 func (p *PubSubClient) CreateSubscription(ctx context.Context, in *CreateSubscriptionRequest) error {
 	req := &pb.CreateSubscriptionRequest{
 		Topic:        in.Topic,
@@ -111,6 +117,7 @@ func (p *PubSubClient) CreateSubscription(ctx context.Context, in *CreateSubscri
 	return nil
 }
 
+// Gets number of messages left in queue for all subscriptions.
 func (p *PubSubClient) GetNumberOfMessages(ctx context.Context, topic string) ([]*GetNumberOfMessagesResponse, error) {
 	res, err := (*p.clientconn).GetMessagesInQueue(ctx, &pb.GetMessagesInQueueRequest{})
 	if err != nil {
