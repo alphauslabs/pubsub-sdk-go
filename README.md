@@ -1,6 +1,5 @@
-# (WIP) pubsub-sdk-go
 
-A Go SDK for interacting with internal PubSub service.
+Go SDK for interacting with internal PubSub service. **(WIP)** 
 
 ## Installation
 
