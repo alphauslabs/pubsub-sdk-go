@@ -15,7 +15,7 @@ func (p *PubSubClient) Close() {
 }
 
 func New() (*PubSubClient, error) {
-	conn, err := grpc.Dial(":50051", grpc.WithInsecure())
+	conn, err := grpc.Dial("10.146.0.27:50051", grpc.WithInsecure())
 	if err != nil {
 		return nil, err
 	}
@@ -45,6 +45,7 @@ func (p *PubSubClient) Subscribe(ctx context.Context, in *SubscribeRequest) {
 		close(in.Errorch)
 		close(in.Outch)
 	}()
+
 	// Create a new SubscribeRequest
 	req := &pb.SubscribeRequest{
 		Topic:        in.Topic,
