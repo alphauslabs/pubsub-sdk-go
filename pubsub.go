@@ -27,7 +27,6 @@ func New() (*PubSubClient, error) {
 
 // Publish a message to a given topic.
 func (p *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
-	// Create a new PublishRequest
 	req := &pb.PublishRequest{
 		Topic:      in.Topic,
 		Payload:    in.Message,
@@ -87,9 +86,9 @@ func (p *PubSubClient) SendAck(ctx context.Context, id, subscription string) err
 }
 
 // Creates a new topic with the given name.
-func (p *PubSubClient) CreateTopic(ctx context.Context, topic string) error {
+func (p *PubSubClient) CreateTopic(ctx context.Context, name string) error {
 	req := &pb.CreateTopicRequest{
-		Name: topic,
+		Name: name,
 	}
 
 	_, err := (*p.clientconn).CreateTopic(ctx, req)
@@ -105,7 +104,7 @@ func (p *PubSubClient) CreateTopic(ctx context.Context, topic string) error {
 func (p *PubSubClient) CreateSubscription(ctx context.Context, in *CreateSubscriptionRequest) error {
 	req := &pb.CreateSubscriptionRequest{
 		Topic:        in.Topic,
-		Name:         in.Subscription,
+		Name:         in.Name,
 		NoAutoExtend: in.NoAutoExtend,
 	}
 
