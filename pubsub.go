@@ -100,6 +100,7 @@ func Subscribe(ctx context.Context, in *SubscribeRequest) {
 		if err != nil {
 			st, ok := status.FromError(err)
 			if ok {
+				glog.Info("Error: ", st.Code())
 				if st.Code() == codes.Unavailable {
 					i++
 					glog.Errorf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
