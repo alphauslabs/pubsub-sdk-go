@@ -4,7 +4,7 @@ Go SDK for interacting with internal PubSub service. **(WIP)**
 ## Installation
 
 ```bash
-$ go get github.com/alphauslabs/pubsub-sdk-go
+$ go get github.com/alphauslabs/pubsub-sdk-go@latest
 ```
 
 ## Usage
