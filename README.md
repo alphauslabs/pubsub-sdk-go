@@ -17,10 +17,9 @@ import "github.com/alphauslabs/pubsub-sdk-go"
 func main() {
     client, err := pubsub.New()
     if err != nil {
-        // handle error
+        return
     }
     defer client.Close()
-    
     // use the client
 }
 ```
