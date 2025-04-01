@@ -172,3 +172,19 @@ func (p *PubSubClient) GetNumberOfMessages(ctx context.Context, topic string) ([
 
 	return ret, nil
 }
+
+// Extends the timeout for a given message, this is useful when the subscriber needs more time to process the message.
+// The message will be automatically extended if the subscription is created with NoAutoExtend set to false.
+func (p *PubSubClient) ExtendTimeout(ctx context.Context, msgId, subscription string) error {
+	req := &pb.ExtendVisibilityTimeoutRequest{
+		Id:           msgId,
+		Subscription: subscription,
+	}
+
+	_, err := (*p.clientconn).ExtendVisibilityTimeout(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
