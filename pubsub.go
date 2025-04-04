@@ -115,8 +115,8 @@ func Subscribe(ctx context.Context, in *SubscribeRequest) {
 }
 
 // Sends Acknowledgement for a given message, subscriber should call this everyime a message is done processing.
-func (p *PubSubClient) SendAck(ctx context.Context, id, subscription string) error {
-	_, err := (*p.clientconn).Acknowledge(ctx, &pb.AcknowledgeRequest{Id: id, Subscription: subscription})
+func (p *PubSubClient) SendAck(ctx context.Context, id, subscription, topic string) error {
+	_, err := (*p.clientconn).Acknowledge(ctx, &pb.AcknowledgeRequest{Id: id, Subscription: subscription, Topic: topic})
 	if err != nil {
 		return err
 	}
@@ -175,10 +175,11 @@ func (p *PubSubClient) GetNumberOfMessages(ctx context.Context, topic string) ([
 
 // Extends the timeout for a given message, this is useful when the subscriber needs more time to process the message.
 // The message will be automatically extended if the subscription is created with NoAutoExtend set to false.
-func (p *PubSubClient) ExtendTimeout(ctx context.Context, msgId, subscription string) error {
+func (p *PubSubClient) ExtendTimeout(ctx context.Context, msgId, subscription, topic string) error {
 	req := &pb.ExtendVisibilityTimeoutRequest{
 		Id:           msgId,
 		Subscription: subscription,
+		Topic:        topic,
 	}
 
 	_, err := (*p.clientconn).ExtendVisibilityTimeout(ctx, req)
