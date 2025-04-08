@@ -14,6 +14,9 @@ type PublishRequest struct {
 	Topic      string
 	Message    string
 	Attributes map[string]string
+
+	// RetryLimit is the max number of times to retry publishing a message. Default is 5.
+	RetryLimit int
 }
 
 type SubscribeRequest struct {

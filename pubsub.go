@@ -31,20 +31,64 @@ func New() (*PubSubClient, error) {
 	return &PubSubClient{conn: conn, clientconn: &clientconn}, nil
 }
 
-// Publish a message to a given topic.
-func (p *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
+// Publish a message to a given topic, with retry mechanism.
+func Publish(ctx context.Context, in *PublishRequest) error {
 	req := &pb.PublishRequest{
 		Topic:      in.Topic,
 		Payload:    in.Message,
 		Attributes: in.Attributes,
 	}
 
-	_, err := (*p.clientconn).Publish(ctx, req)
-	if err != nil {
-		return err
+	do := func() error {
+		conn, err := grpc.Dial("10.146.0.27:50051", grpc.WithInsecure())
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+
+		clientconn := pb.NewPubSubServiceClient(conn)
+
+		_, err = clientconn.Publish(ctx, req)
+		if err != nil {
+			return err
+		}
+
+		return nil
 	}
 
-	return nil
+	bo := gaxv2.Backoff{
+		Initial: 5 * time.Second,
+		Max:     1 * time.Minute,
+	}
+	limit := in.RetryLimit
+	if limit == 0 {
+		limit = 5
+	}
+	i := 0
+	var finalErr error
+	for {
+		if i >= limit {
+			break
+		}
+		err := do()
+		if err != nil {
+			finalErr = err
+			st, ok := status.FromError(err)
+			if ok {
+				glog.Info("Error: ", st.Code())
+				if st.Code() == codes.Unavailable {
+					i++
+					glog.Errorf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
+					time.Sleep(bo.Pause())
+					continue
+				}
+			}
+			break
+		}
+		break // no error, finalErr is nil
+	}
+
+	return finalErr
 }
 
 // Subscribes to a subscription. Data will be sent to the Outch, while errors on Errch.
