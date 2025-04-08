@@ -32,23 +32,26 @@ func New() (*PubSubClient, error) {
 }
 
 // Publish a message to a given topic, with retry mechanism.
-func Publish(ctx context.Context, in *PublishRequest) error {
+func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 	req := &pb.PublishRequest{
 		Topic:      in.Topic,
 		Payload:    in.Message,
 		Attributes: in.Attributes,
 	}
 
-	do := func() error {
-		conn, err := grpc.Dial("10.146.0.27:50051", grpc.WithInsecure())
-		if err != nil {
-			return err
+	do := func(iter int) error {
+		clientconn := *c.clientconn
+
+		if iter != 0 {
+			conn, err := grpc.Dial("10.146.0.27:50051", grpc.WithInsecure())
+			if err != nil {
+				return err
+			}
+			defer conn.Close()
+
+			clientconn = pb.NewPubSubServiceClient(conn)
 		}
-		defer conn.Close()
-
-		clientconn := pb.NewPubSubServiceClient(conn)
-
-		_, err = clientconn.Publish(ctx, req)
+		_, err := clientconn.Publish(ctx, req)
 		if err != nil {
 			return err
 		}
@@ -62,7 +65,7 @@ func Publish(ctx context.Context, in *PublishRequest) error {
 	}
 	limit := in.RetryLimit
 	if limit == 0 {
-		limit = 5
+		limit = 10
 	}
 	i := 0
 	var finalErr error
@@ -70,7 +73,7 @@ func Publish(ctx context.Context, in *PublishRequest) error {
 		if i >= limit {
 			break
 		}
-		err := do()
+		err := do(i)
 		if err != nil {
 			finalErr = err
 			st, ok := status.FromError(err)
