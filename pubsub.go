@@ -67,28 +67,34 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 	if limit == 0 {
 		limit = 10
 	}
-	i := 0
 	var finalErr error
-	for {
-		if i >= limit {
-			break
-		}
+
+	for i := 0; i < limit; i++ {
 		err := do(i)
-		if err != nil {
-			finalErr = err
-			st, ok := status.FromError(err)
-			if ok {
-				glog.Info("Error: ", st.Code())
-				if st.Code() == codes.Unavailable {
-					i++
-					glog.Errorf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
-					time.Sleep(bo.Pause())
-					continue
-				}
+		if err == nil {
+			return nil
+		}
+
+		finalErr = err
+
+		shouldRetry := false
+
+		st, ok := status.FromError(err)
+		if ok {
+			glog.Info("Error: ", st.Code())
+			switch st.Code() {
+			case codes.Unavailable, codes.DeadlineExceeded, codes.ResourceExhausted, codes.Aborted:
+				shouldRetry = true
 			}
+		}
+
+		if !shouldRetry || i == limit-1 {
 			break
 		}
-		break // no error, finalErr is nil
+
+		pauseTime := bo.Pause()
+		glog.Errorf("Error: %v, retrying in %v, retries left: %v", err, pauseTime, limit-i-1)
+		time.Sleep(pauseTime)
 	}
 
 	return finalErr
