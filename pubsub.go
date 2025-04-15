@@ -187,18 +187,14 @@ func (p *PubSubClient) SendAck(ctx context.Context, id, subscription, topic stri
 
 // Sends Acknowledgement for a given message, with retry mechanism.
 func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, topic string) error {
-	var clientconn pb.PubSubServiceClient
-	do := func(iter int) error {
-		clientconn = *p.clientconn
-		if iter == 2 {
-			conn, err := grpc.NewClient("10.146.0.27:50051", grpc.WithInsecure())
-			if err != nil {
-				return err
-			}
-			defer conn.Close()
-			clientconn = pb.NewPubSubServiceClient(conn)
+	do := func() error {
+		conn, err := grpc.NewClient("10.146.0.27:50051", grpc.WithInsecure())
+		if err != nil {
+			return err
 		}
-		_, err := clientconn.Acknowledge(ctx, &pb.AcknowledgeRequest{Id: id, Subscription: subscription, Topic: topic})
+		defer conn.Close()
+		clientconn := pb.NewPubSubServiceClient(conn)
+		_, err = clientconn.Acknowledge(ctx, &pb.AcknowledgeRequest{Id: id, Subscription: subscription, Topic: topic})
 		return err
 	}
 	bo := gaxv2.Backoff{
@@ -208,7 +204,7 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 	limit := 30
 	var lastErr error
 	for i := 1; i <= limit; i++ {
-		err := do(i)
+		err := do()
 		lastErr = err
 		if err == nil {
 			return nil
