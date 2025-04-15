@@ -22,7 +22,7 @@ func (p *PubSubClient) Close() {
 
 // New creates a new PubSub client.
 func New() (*PubSubClient, error) {
-	conn, err := grpc.Dial("10.146.0.27:50051", grpc.WithInsecure())
+	conn, err := grpc.NewClient("10.146.0.27:50051", grpc.WithInsecure())
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +43,7 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 		clientconn := *c.clientconn
 
 		if iter != 0 {
-			conn, err := grpc.Dial("10.146.0.27:50051", grpc.WithInsecure())
+			conn, err := grpc.NewClient("10.146.0.27:50051", grpc.WithInsecure())
 			if err != nil {
 				return err
 			}
@@ -113,7 +113,7 @@ func Subscribe(ctx context.Context, in *SubscribeRequest) {
 	}
 
 	do := func() error {
-		conn, err := grpc.Dial("10.146.0.27:50051", grpc.WithInsecure())
+		conn, err := grpc.NewClient("10.146.0.27:50051", grpc.WithInsecure())
 		if err != nil {
 			return err
 		}
@@ -183,6 +183,50 @@ func (p *PubSubClient) SendAck(ctx context.Context, id, subscription, topic stri
 	}
 
 	return nil
+}
+
+// Sends Acknowledgement for a given message, with retry mechanism.
+func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, topic string) error {
+	var clientconn pb.PubSubServiceClient
+	do := func(iter int) error {
+		clientconn = *p.clientconn
+		if iter == 2 {
+			conn, err := grpc.NewClient("10.146.0.27:50051", grpc.WithInsecure())
+			if err != nil {
+				return err
+			}
+			defer conn.Close()
+			clientconn = pb.NewPubSubServiceClient(conn)
+		}
+		_, err := clientconn.Acknowledge(ctx, &pb.AcknowledgeRequest{Id: id, Subscription: subscription, Topic: topic})
+		return err
+	}
+	bo := gaxv2.Backoff{
+		Initial: 5 * time.Second,
+		Max:     1 * time.Minute,
+	}
+	limit := 30
+	var lastErr error
+	for i := 1; i <= limit; i++ {
+		err := do(i)
+		lastErr = err
+		if err == nil {
+			return nil
+		}
+		if st, ok := status.FromError(err); ok {
+			glog.Info("Error: ", st.Code())
+			switch st.Code() {
+			case codes.Unavailable:
+				glog.Errorf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i-1)
+				time.Sleep(bo.Pause())
+				continue
+			default:
+				return err
+			}
+		}
+		return err
+	}
+	return lastErr
 }
 
 // Creates a new topic with the given name.
