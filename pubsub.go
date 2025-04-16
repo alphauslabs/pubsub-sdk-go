@@ -2,6 +2,7 @@ package pubsub
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"io"
 	"time"
@@ -9,8 +10,11 @@ import (
 	pb "github.com/alphauslabs/pubsub-proto/v1"
 	"github.com/golang/glog"
 	gaxv2 "github.com/googleapis/gax-go/v2"
+	"google.golang.org/api/idtoken"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -22,7 +26,36 @@ func (p *PubSubClient) Close() {
 
 // New creates a new PubSub client.
 func New() (*PubSubClient, error) {
-	conn, err := grpc.NewClient("10.146.0.27:50051", grpc.WithInsecure())
+	aud := "10.146.0.27:50051"
+	token, err := idtoken.NewTokenSource(context.Background(), aud)
+	if err != nil {
+		return nil, err
+	}
+
+	tk, err := token.Token()
+	if err != nil {
+		return nil, err
+	}
+
+	var opts []grpc.DialOption
+	creds := credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})
+	opts = append(opts, grpc.WithTransportCredentials(creds))
+	opts = append(opts, grpc.WithBlock())
+	opts = append(opts, grpc.WithUnaryInterceptor(func(ctx context.Context,
+		method string, req, reply interface{}, cc *grpc.ClientConn,
+		invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}))
+
+	opts = append(opts, grpc.WithStreamInterceptor(func(ctx context.Context,
+		desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer,
+		opts ...grpc.CallOption) (grpc.ClientStream, error) {
+		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
+		return streamer(ctx, desc, cc, method, opts...)
+	}))
+
+	conn, err := grpc.NewClient("http://"+aud, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -43,13 +76,8 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 		clientconn := *c.clientconn
 
 		if iter != 0 {
-			conn, err := grpc.NewClient("10.146.0.27:50051", grpc.WithInsecure())
-			if err != nil {
-				return err
-			}
-			defer conn.Close()
-
-			clientconn = pb.NewPubSubServiceClient(conn)
+			clientconn, _ := New()
+			defer clientconn.Close()
 		}
 		_, err := clientconn.Publish(ctx, req)
 		if err != nil {
