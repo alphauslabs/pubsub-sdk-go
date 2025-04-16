@@ -55,7 +55,7 @@ func New() (*PubSubClient, error) {
 		return streamer(ctx, desc, cc, method, opts...)
 	}))
 
-	conn, err := grpc.NewClient("http://"+aud, opts...)
+	conn, err := grpc.NewClient(aud, opts...)
 	if err != nil {
 		return nil, err
 	}
