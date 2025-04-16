@@ -2,7 +2,6 @@ package pubsub
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"io"
 	"time"
@@ -13,7 +12,7 @@ import (
 	"google.golang.org/api/idtoken"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
@@ -38,8 +37,7 @@ func New() (*PubSubClient, error) {
 	}
 
 	var opts []grpc.DialOption
-	creds := credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})
-	opts = append(opts, grpc.WithTransportCredentials(creds))
+	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	opts = append(opts, grpc.WithBlock())
 	opts = append(opts, grpc.WithUnaryInterceptor(func(ctx context.Context,
 		method string, req, reply interface{}, cc *grpc.ClientConn,
