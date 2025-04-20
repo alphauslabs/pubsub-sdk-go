@@ -72,10 +72,13 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 
 	do := func(iter int) error {
 		clientconn := *c.clientconn
-
 		if iter != 0 {
-			clientconn, _ := New()
-			defer clientconn.Close()
+			conn, err := New()
+			if err != nil {
+				return err
+			}
+			clientconn = *conn.clientconn
+			defer conn.Close()
 		}
 		_, err := clientconn.Publish(ctx, req)
 		if err != nil {
@@ -137,15 +140,14 @@ func Subscribe(ctx context.Context, in *SubscribeRequest) {
 		Topic:        in.Topic,
 		Subscription: in.Subcription,
 	}
-
+	var clientconn pb.PubSubServiceClient
 	do := func() error {
-		conn, err := grpc.NewClient("10.146.0.27:50051", grpc.WithInsecure())
+		conn, err := New()
 		if err != nil {
 			return err
 		}
 		defer conn.Close()
-
-		clientconn := pb.NewPubSubServiceClient(conn)
+		clientconn = *conn.clientconn
 		stream, err := clientconn.Subscribe(ctx, req)
 		if err != nil {
 			return err
@@ -214,12 +216,12 @@ func (p *PubSubClient) SendAck(ctx context.Context, id, subscription, topic stri
 // Sends Acknowledgement for a given message, with retry mechanism.
 func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, topic string) error {
 	do := func() error {
-		conn, err := grpc.NewClient("10.146.0.27:50051", grpc.WithInsecure())
+		conn, err := New()
 		if err != nil {
 			return err
 		}
 		defer conn.Close()
-		clientconn := pb.NewPubSubServiceClient(conn)
+		clientconn := *conn.clientconn
 		_, err = clientconn.Acknowledge(ctx, &pb.AcknowledgeRequest{Id: id, Subscription: subscription, Topic: topic})
 		return err
 	}
