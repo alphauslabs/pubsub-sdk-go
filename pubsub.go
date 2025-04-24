@@ -25,7 +25,7 @@ func (p *PubSubClient) Close() {
 
 // New creates a new PubSub client.
 func New() (*PubSubClient, error) {
-	aud := "35.213.124.15:50051"
+	aud := "35.213.109.125:50051"
 	token, err := idtoken.NewTokenSource(context.Background(), aud)
 	if err != nil {
 		return nil, err
