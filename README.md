@@ -26,7 +26,7 @@ func main() {
 ## Available functions
 
 1. **Publish** - Publishes a message to the given topic (with retry).
-2. **Subscribe** - Subscribes to a subcription and receives messages.
+2. **Subscribe** - Subscribes to a subcription and receives messages (with retry).
 3. **SendAck** - Acknowledge a message.
 4. **SendAckWithRetry** - Acknowledges a message (with retry).
 5. **CreateTopic** - Creates a new topic.
