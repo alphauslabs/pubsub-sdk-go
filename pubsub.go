@@ -3,7 +3,10 @@ package pubsub
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"log"
+	"sync/atomic"
 	"time"
 
 	pb "github.com/alphauslabs/pubsub-proto/v1"
@@ -129,10 +132,110 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 	return finalErr
 }
 
+// Subscribes and Acknowledge the message after processing through the provided callback.
+func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest) error {
+	if in.Callback == nil {
+		return fmt.Errorf("Callback sould not be nil")
+	}
+
+	if in.Topic == "" {
+		return fmt.Errorf("Topic should not be empty")
+	}
+
+	if in.Subcription == "" {
+		return fmt.Errorf("Subscription should not be empty")
+	}
+
+	var quit int32
+	go func() {
+		<-ctx.Done()
+		atomic.StoreInt32(&quit, 1)
+	}()
+
+	req := &pb.SubscribeRequest{
+		Topic:        in.Topic,
+		Subscription: in.Subcription,
+	}
+	var clientconn pb.PubSubServiceClient
+	do := func() error {
+		conn, err := New()
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+		clientconn = *conn.clientconn
+		stream, err := clientconn.Subscribe(ctx, req)
+		if err != nil {
+			return err
+		}
+
+		for { // Loop for receiving messages
+			if atomic.LoadInt32(&quit) > 0 {
+				log.Println("Received quit signal, exiting...")
+				return nil
+			}
+
+			msg, err := stream.Recv()
+			if err != nil {
+				return err
+			}
+			b, _ := json.Marshal(msg.Payload)
+			err = in.Callback(in.ctx, b) // This could take some time depending on the callback.
+			if err != nil {
+				log.Printf("Callback error: %v", err)
+				continue
+			} else {
+				client, _ := New()
+				err = client.SendAck(ctx, msg.Id, in.Subcription, in.Topic)
+				if err != nil {
+					log.Printf("Ack error: %v", err)
+					continue
+				}
+			}
+		}
+	}
+
+	bo := gaxv2.Backoff{
+		Initial: 5 * time.Second,
+		Max:     1 * time.Minute,
+	}
+	limit := 30
+	i := 0
+	var ferr error
+	for { // Loop for retry
+		if i >= limit {
+			break
+		}
+		err := do()
+		ferr = err
+		if err != nil {
+			st, ok := status.FromError(err)
+			if ok {
+				glog.Info("Error: ", st.Code())
+				if st.Code() == codes.Unavailable {
+					i++
+					glog.Errorf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
+					time.Sleep(bo.Pause())
+					continue
+				}
+			}
+
+			if err == io.EOF {
+				i++
+				glog.Errorf("Stream ended with EOF err=%, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
+				time.Sleep(bo.Pause())
+				continue
+			}
+			break
+		}
+	}
+	return ferr
+}
+
 // Subscribes to a subscription. Data will be sent to the Outch, while errors on Errch.
 func Subscribe(ctx context.Context, in *SubscribeRequest) {
 	defer func() {
-		close(in.Errorch)
+		close(in.Errch)
 		close(in.Outch)
 	}()
 
@@ -197,7 +300,7 @@ func Subscribe(ctx context.Context, in *SubscribeRequest) {
 				time.Sleep(bo.Pause())
 				continue
 			}
-			in.Errorch <- err
+			in.Errch <- err
 			break
 		}
 	}
