@@ -179,7 +179,8 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest) error {
 			if err != nil {
 				return err
 			}
-			b, _ := json.Marshal(msg.Payload)
+
+			b := []byte(msg.Payload)
 			err = in.Callback(in.Ctx, b) // This could take some time depending on the callback.
 			if err != nil {
 				// todo: implement requeue
