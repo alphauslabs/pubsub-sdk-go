@@ -180,8 +180,9 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest) error {
 				return err
 			}
 			b, _ := json.Marshal(msg.Payload)
-			err = in.Callback(in.ctx, b) // This could take some time depending on the callback.
+			err = in.Callback(in.Ctx, b) // This could take some time depending on the callback.
 			if err != nil {
+				// todo: implement requeue
 				log.Printf("Callback error: %v", err)
 				continue
 			} else {

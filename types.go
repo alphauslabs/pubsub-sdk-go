@@ -24,7 +24,7 @@ type MessageCallback func(ctx any, data []byte) error
 type SubscribeAndAckRequest struct {
 	Topic       string
 	Subcription string
-	ctx         interface{} // arbitrary data passed to callback
+	Ctx         any // arbitrary data passed to callback
 	Callback    MessageCallback
 }
 
