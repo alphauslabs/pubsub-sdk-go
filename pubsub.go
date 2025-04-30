@@ -477,8 +477,20 @@ func (p *PubSubClient) CreateSubscription(ctx context.Context, in *CreateSubscri
 }
 
 // Gets number of messages left in queue for all subscriptions.
-func (p *PubSubClient) GetNumberOfMessages(ctx context.Context, topic string) ([]*GetNumberOfMessagesResponse, error) {
-	res, err := (*p.clientconn).GetMessagesInQueue(ctx, &pb.GetMessagesInQueueRequest{})
+// Filter is optional, fmt: filter[0] = topic, filter[1] = subscription
+func (p *PubSubClient) GetNumberOfMessages(ctx context.Context, filter ...string) ([]*GetNumberOfMessagesResponse, error) {
+	var topic, subscription string
+	switch len(filter) {
+	case 1:
+		topic = filter[0]
+	case 2:
+		topic = filter[0]
+		subscription = filter[1]
+	}
+	res, err := (*p.clientconn).GetMessagesInQueue(ctx, &pb.GetMessagesInQueueRequest{
+		Topic:        topic,
+		Subscription: subscription,
+	})
 	if err != nil {
 		return nil, err
 	}
