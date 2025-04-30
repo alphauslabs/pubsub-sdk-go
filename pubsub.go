@@ -146,7 +146,25 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest) error {
 		return fmt.Errorf("Subscription should not be empty")
 	}
 
+	client, err := New()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	clientconn := *client.clientconn
+	r, err := clientconn.GetSubscription(ctx, &pb.GetSubscriptionRequest{
+		Name: in.Subcription,
+	})
+	if err != nil {
+		return err
+	}
+
+	autoExtend := r.Subscription.AutoExtend
+
 	var quit int32
+
+	// Listen if context is done
 	go func() {
 		<-ctx.Done()
 		atomic.StoreInt32(&quit, 1)
@@ -156,20 +174,22 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest) error {
 		Topic:        in.Topic,
 		Subscription: in.Subcription,
 	}
-	var clientconn pb.PubSubServiceClient
+
 	do := func() error {
 		conn, err := New()
 		if err != nil {
 			return err
 		}
 		defer conn.Close()
-		clientconn = *conn.clientconn
+		clientconn := *conn.clientconn
 		stream, err := clientconn.Subscribe(ctx, req)
 		if err != nil {
 			return err
 		}
 
-		for { // Loop for receiving messages
+		// Loop for receiving messages
+		for {
+			// This could take some time to quit, depending on the last message callback duration.
 			if atomic.LoadInt32(&quit) > 0 {
 				log.Println("Received quit signal, exiting...")
 				return nil
@@ -181,18 +201,63 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest) error {
 			}
 
 			b := []byte(msg.Payload)
-			err = in.Callback(in.Ctx, b) // This could take some time depending on the callback.
-			if err != nil {
-				// todo: implement requeue
-				log.Printf("Callback error: %v", err)
-				continue
-			} else {
-				client, _ := New()
-				err = client.SendAck(ctx, msg.Id, in.Subcription, in.Topic)
+
+			switch {
+			case autoExtend:
+				err = in.Callback(in.Ctx, b) // This could take some time depending on the callback.
 				if err != nil {
-					log.Printf("Ack error: %v", err)
-					continue
+					_, err = clientconn.RequeueMessage(ctx, &pb.RequeueMessageRequest{
+						Topic:        in.Topic,
+						Subscription: in.Subcription,
+						Id:           msg.Id,
+					})
+					if err != nil {
+						log.Printf("RequeueMessage failed: %v", err)
+					}
+				} else {
+					err = client.SendAckWithRetry(ctx, msg.Id, in.Subcription, in.Topic)
+					if err != nil {
+						log.Printf("Ack error: %v", err)
+					}
 				}
+			default: // autoextend for this subscription is set to false, We manually extend it's timeout before timeout ends, We repeat this until the callback returns
+				fdone := make(chan struct{})
+				extender, cancel := context.WithCancel(context.Background())
+				t := time.NewTicker(20 * time.Second)
+				go func() {
+					defer func() {
+						close(fdone)
+						t.Stop()
+					}()
+					for {
+						select {
+						case <-extender.Done():
+							return
+						case <-t.C:
+							// Reset timeout for this message
+							_, err := clientconn.ExtendVisibilityTimeout(ctx, &pb.ExtendVisibilityTimeoutRequest{
+								Topic:        in.Topic,
+								Subscription: in.Subcription,
+								Id:           msg.Id,
+							})
+							if err != nil { // If failed, it means the message would be requeued.
+								log.Printf("ExtendVisibilityTimeout failed: %v", err)
+							}
+						}
+					}
+				}()
+
+				err = in.Callback(in.Ctx, b)
+				if err != nil {
+					log.Printf("Callback error: %v", err)
+				} else {
+					err = client.SendAckWithRetry(ctx, msg.Id, in.Subcription, in.Topic)
+					if err != nil {
+						log.Printf("Ack error: %v", err)
+					}
+				}
+				cancel() // Signal our extender that callback is done
+				<-fdone  // Wait for our extender
 			}
 		}
 	}
@@ -204,7 +269,9 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest) error {
 	limit := 30
 	i := 0
 	var ferr error
-	for { // Loop for retry
+
+	// Loop for retry
+	for {
 		if i >= limit {
 			break
 		}
@@ -234,6 +301,7 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest) error {
 	return ferr
 }
 
+// Note: Better to use SubscribeAndAck instead.
 // Subscribes to a subscription. Data will be sent to the Outch, while errors on Errch.
 func Subscribe(ctx context.Context, in *SubscribeRequest) {
 	defer func() {
