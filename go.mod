@@ -4,6 +4,7 @@ go 1.23.6
 
 require (
 	github.com/alphauslabs/pubsub-proto v0.2.3
+	github.com/dchest/uniuri v1.2.0
 	github.com/golang/glog v1.2.4
 	github.com/googleapis/gax-go/v2 v2.14.1
 	google.golang.org/api v0.229.0

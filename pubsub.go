@@ -10,6 +10,7 @@ import (
 	"time"
 
 	pb "github.com/alphauslabs/pubsub-proto/v1"
+	"github.com/dchest/uniuri"
 	"github.com/golang/glog"
 	gaxv2 "github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/idtoken"
@@ -133,7 +134,8 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 }
 
 // Subscribes and Acknowledge the message after processing through the provided callback.
-func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest) error {
+// Cancelled by ctx, and will send empty struct to done if provided.
+func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...chan struct{}) error {
 	if in.Callback == nil {
 		return fmt.Errorf("Callback sould not be nil")
 	}
@@ -145,6 +147,15 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest) error {
 	if in.Subcription == "" {
 		return fmt.Errorf("Subscription should not be empty")
 	}
+
+	localId := uniuri.NewLen(10)
+	log.Printf("Started: %v, time: %v", localId, time.Now())
+	defer func(start time.Time) {
+		log.Printf("Stopped: %v, duration: %v", localId, time.Since(start))
+		if len(done) > 0 {
+			done[0] <- struct{}{}
+		}
+	}(time.Now())
 
 	client, err := New()
 	if err != nil {
@@ -218,6 +229,8 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest) error {
 					err = client.SendAckWithRetry(ctx, msg.Id, in.Subcription, in.Topic)
 					if err != nil {
 						log.Printf("Ack error: %v", err)
+					} else {
+						log.Printf("Acked message %s", msg.Id)
 					}
 				}
 			default: // autoextend for this subscription is set to false, We manually extend it's timeout before timeout ends, We repeat this until the callback returns
@@ -242,6 +255,8 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest) error {
 							})
 							if err != nil { // If failed, it means the message would be requeued.
 								log.Printf("ExtendVisibilityTimeout failed: %v", err)
+							} else {
+								log.Printf("Extended timeout for message %s", msg.Id)
 							}
 						}
 					}
@@ -254,6 +269,8 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest) error {
 					err = client.SendAckWithRetry(ctx, msg.Id, in.Subcription, in.Topic)
 					if err != nil {
 						log.Printf("Ack error: %v", err)
+					} else {
+						log.Printf("Acked message %s", msg.Id)
 					}
 				}
 				cancel() // Signal our extender that callback is done
