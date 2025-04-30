@@ -51,3 +51,23 @@ type GetNumberOfMessagesResponse struct {
 	Subscription             string
 	CurrentMessagesAvailable int32
 }
+
+type Requeuer interface {
+	ShouldRequeue() bool
+}
+
+type RequeueError struct {
+	error
+	requeue bool
+}
+
+func (r RequeueError) ShouldRequeue() bool {
+	return r.requeue
+}
+
+func NewRequeueError(err error) RequeueError {
+	return RequeueError{
+		error:   err,
+		requeue: true,
+	}
+}

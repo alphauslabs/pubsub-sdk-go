@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"sync/atomic"
 	"time"
 
 	pb "github.com/alphauslabs/pubsub-proto/v1"
@@ -149,9 +148,9 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 	}
 
 	localId := uniuri.NewLen(10)
-	log.Printf("Started: %v, time: %v", localId, time.Now())
+	log.Printf("Started=%v, time=%v", localId, time.Now().Format(time.RFC3339))
 	defer func(start time.Time) {
-		log.Printf("Stopped: %v, duration: %v", localId, time.Since(start))
+		log.Printf("Stopped=%v, duration=%v", localId, time.Since(start))
 		if len(done) > 0 {
 			done[0] <- struct{}{}
 		}
@@ -173,14 +172,6 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 
 	autoExtend := r.Subscription.AutoExtend
 
-	var quit int32
-
-	// Listen if context is done
-	go func() {
-		<-ctx.Done()
-		atomic.StoreInt32(&quit, 1)
-	}()
-
 	req := &pb.SubscribeRequest{
 		Topic:        in.Topic,
 		Subscription: in.Subcription,
@@ -200,32 +191,34 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 
 		// Loop for receiving messages
 		for {
-			// This could take some time to quit, depending on the last message callback duration.
-			if atomic.LoadInt32(&quit) > 0 {
-				log.Println("Received quit signal, exiting...")
-				return nil
-			}
-
 			msg, err := stream.Recv()
 			if err != nil {
 				return err
 			}
-
-			b := []byte(msg.Payload)
-
 			switch {
 			case autoExtend:
-				err = in.Callback(in.Ctx, b) // This could take some time depending on the callback.
+				ack := true
+				err = in.Callback(in.Ctx, []byte(msg.Payload)) // This could take some time depending on the callback.
 				if err != nil {
-					_, err = clientconn.RequeueMessage(ctx, &pb.RequeueMessageRequest{
-						Topic:        in.Topic,
-						Subscription: in.Subcription,
-						Id:           msg.Id,
-					})
-					if err != nil {
-						log.Printf("RequeueMessage failed: %v", err)
+					if r, ok := err.(Requeuer); ok {
+						if r.ShouldRequeue() {
+							log.Printf("Requeueing message=%v", msg.Id)
+							ack = false
+							// Explicitly requeue the message, since this subscription is set to autoextend.
+							_, err = clientconn.RequeueMessage(ctx, &pb.RequeueMessageRequest{
+								Topic:        in.Topic,
+								Subscription: in.Subcription,
+								Id:           msg.Id,
+							})
+							if err != nil {
+								log.Printf("RequeueMessage failed: %v", err)
+							}
+						}
+					} else {
+						log.Printf("Callback error: %v", err)
 					}
-				} else {
+				}
+				if ack {
 					err = client.SendAckWithRetry(ctx, msg.Id, in.Subcription, in.Topic)
 					if err != nil {
 						log.Printf("Ack error: %v", err)
@@ -235,7 +228,7 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 				}
 			default: // autoextend for this subscription is set to false, We manually extend it's timeout before timeout ends, We repeat this until the callback returns
 				fdone := make(chan struct{})
-				extender, cancel := context.WithCancel(context.Background())
+				extender, cancel := context.WithCancel(ctx)
 				t := time.NewTicker(20 * time.Second)
 				go func() {
 					defer func() {
@@ -261,11 +254,19 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 						}
 					}
 				}()
-
-				err = in.Callback(in.Ctx, b)
+				ack := true
+				err = in.Callback(in.Ctx, []byte(msg.Payload)) // This could take some time depending on the callback.
 				if err != nil {
-					log.Printf("Callback error: %v", err)
-				} else {
+					if r, ok := err.(Requeuer); ok {
+						if r.ShouldRequeue() {
+							log.Printf("Requeueing message=%v", msg.Id)
+							ack = false
+						}
+					} else {
+						log.Printf("Callback error: %v", err)
+					}
+				}
+				if ack {
 					err = client.SendAckWithRetry(ctx, msg.Id, in.Subcription, in.Topic)
 					if err != nil {
 						log.Printf("Ack error: %v", err)
@@ -273,6 +274,7 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 						log.Printf("Acked message %s", msg.Id)
 					}
 				}
+
 				cancel() // Signal our extender that callback is done
 				<-fdone  // Wait for our extender
 			}
