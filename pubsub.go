@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strings"
 	"time"
 
 	pb "github.com/alphauslabs/pubsub-proto/v1"
@@ -27,8 +28,13 @@ func (p *PubSubClient) Close() {
 }
 
 // New creates a new PubSub client.
-func New() (*PubSubClient, error) {
+func New(addr ...string) (*PubSubClient, error) {
 	aud := "35.213.109.125:50051"
+	if len(addr) > 0 {
+		if addr[0] != "" {
+			aud = addr[0]
+		}
+	}
 	token, err := idtoken.NewTokenSource(context.Background(), aud)
 	if err != nil {
 		return nil, err
@@ -177,8 +183,8 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 		Subscription: in.Subcription,
 	}
 
-	do := func() error {
-		conn, err := New()
+	do := func(addr string) error {
+		conn, err := New(addr)
 		if err != nil {
 			return err
 		}
@@ -288,13 +294,13 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 	limit := 30
 	i := 0
 	var ferr error
-
+	var address string
 	// Loop for retry
 	for {
 		if i >= limit {
 			break
 		}
-		err := do()
+		err := do(address)
 		ferr = err
 		if err != nil {
 			st, ok := status.FromError(err)
@@ -307,7 +313,14 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 					continue
 				}
 			}
-
+			if strings.Contains(err.Error(), "wrongnode") {
+				node := strings.Split(err.Error(), ":")[1]
+				address = node
+				i++
+				glog.Errorf("Stream ended with wrongnode err=%, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
+				time.Sleep(bo.Pause())
+				continue
+			}
 			if err == io.EOF {
 				i++
 				glog.Errorf("Stream ended with EOF err=%, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
@@ -333,8 +346,8 @@ func Subscribe(ctx context.Context, in *SubscribeRequest) {
 		Subscription: in.Subcription,
 	}
 	var clientconn pb.PubSubServiceClient
-	do := func() error {
-		conn, err := New()
+	do := func(addr string) error {
+		conn, err := New(addr)
 		if err != nil {
 			return err
 		}
@@ -360,6 +373,7 @@ func Subscribe(ctx context.Context, in *SubscribeRequest) {
 		}
 	}
 
+	var address string
 	bo := gaxv2.Backoff{
 		Initial: 5 * time.Second,
 		Max:     1 * time.Minute,
@@ -370,7 +384,7 @@ func Subscribe(ctx context.Context, in *SubscribeRequest) {
 		if i >= limit {
 			break
 		}
-		err := do()
+		err := do(address)
 		if err != nil {
 			st, ok := status.FromError(err)
 			if ok {
@@ -382,7 +396,14 @@ func Subscribe(ctx context.Context, in *SubscribeRequest) {
 					continue
 				}
 			}
-
+			if strings.Contains(err.Error(), "wrongnode") {
+				node := strings.Split(err.Error(), ":")[1]
+				address = node
+				i++
+				glog.Errorf("Stream ended with wrongnode err=%, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
+				time.Sleep(bo.Pause())
+				continue
+			}
 			if err == io.EOF {
 				i++
 				glog.Errorf("Stream ended with EOF err=%, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
@@ -407,8 +428,8 @@ func (p *PubSubClient) SendAck(ctx context.Context, id, subscription, topic stri
 
 // Sends Acknowledgement for a given message, with retry mechanism.
 func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, topic string) error {
-	do := func() error {
-		conn, err := New()
+	do := func(addr string) error {
+		conn, err := New(addr)
 		if err != nil {
 			return err
 		}
@@ -421,10 +442,11 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 		Initial: 5 * time.Second,
 		Max:     1 * time.Minute,
 	}
+	var address string
 	limit := 30
 	var lastErr error
 	for i := 1; i <= limit; i++ {
-		err := do()
+		err := do(address)
 		lastErr = err
 		if err == nil {
 			return nil
@@ -439,6 +461,13 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 			default:
 				return err
 			}
+		}
+		if strings.Contains(err.Error(), "wrongnode") {
+			node := strings.Split(err.Error(), ":")[1]
+			address = node
+			glog.Errorf("Stream ended with wrongnode err=%v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i-1)
+			time.Sleep(bo.Pause())
+			continue
 		}
 		return err
 	}
