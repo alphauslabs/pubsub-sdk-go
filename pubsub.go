@@ -317,13 +317,13 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 				node := strings.Split(err.Error(), ":")[1]
 				address = node
 				i++
-				glog.Errorf("Stream ended with wrongnode err=%, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
+				glog.Errorf("Stream ended with wrongnode err=%v, retrying in %v, retries left: %v", err.Error(), bo.Pause(), limit-i)
 				time.Sleep(bo.Pause())
 				continue
 			}
 			if err == io.EOF {
 				i++
-				glog.Errorf("Stream ended with EOF err=%, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
+				glog.Errorf("Stream ended with EOF err=%v, retrying in %v, retries left: %v", err.Error(), bo.Pause(), limit-i)
 				time.Sleep(bo.Pause())
 				continue
 			}
