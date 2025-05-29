@@ -451,13 +451,10 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 		}
 		if st, ok := status.FromError(err); ok {
 			glog.Info("Error: ", st.Code())
-			switch st.Code() {
-			case codes.Unavailable:
+			if st.Code() == codes.Unavailable {
 				glog.Errorf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i-1)
 				time.Sleep(bo.Pause())
 				continue
-			default:
-				return err
 			}
 		}
 		if strings.Contains(err.Error(), "wrongnode") {
