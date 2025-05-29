@@ -308,6 +308,7 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 				glog.Info("Error: ", st.Code())
 				if st.Code() == codes.Unavailable {
 					i++
+					address = ""
 					glog.Errorf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
 					time.Sleep(bo.Pause())
 					continue
@@ -322,6 +323,7 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 			}
 			if err == io.EOF {
 				i++
+				address = ""
 				glog.Errorf("Stream ended with EOF err=%v, retrying in %v, retries left: %v", err.Error(), bo.Pause(), limit-i)
 				time.Sleep(bo.Pause())
 				continue
@@ -390,6 +392,7 @@ func Subscribe(ctx context.Context, in *SubscribeRequest) {
 				glog.Info("Error: ", st.Code())
 				if st.Code() == codes.Unavailable {
 					i++
+					address = ""
 					glog.Errorf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
 					time.Sleep(bo.Pause())
 					continue
@@ -404,6 +407,7 @@ func Subscribe(ctx context.Context, in *SubscribeRequest) {
 			}
 			if err == io.EOF {
 				i++
+				address = ""
 				glog.Errorf("Stream ended with EOF err=%v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
 				time.Sleep(bo.Pause())
 				continue
@@ -452,6 +456,7 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 		if st, ok := status.FromError(err); ok {
 			glog.Info("Error: ", st.Code())
 			if st.Code() == codes.Unavailable {
+				address = ""
 				glog.Errorf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i-1)
 				time.Sleep(bo.Pause())
 				continue
