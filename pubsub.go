@@ -318,8 +318,7 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 				address = node
 				i++
 				glog.Errorf("Stream ended with wrongnode err=%v, retrying in %v, retries left: %v", err.Error(), bo.Pause(), limit-i)
-				time.Sleep(bo.Pause())
-				continue
+				continue // retry immediately
 			}
 			if err == io.EOF {
 				i++
@@ -401,8 +400,7 @@ func Subscribe(ctx context.Context, in *SubscribeRequest) {
 				address = node
 				i++
 				glog.Errorf("Stream ended with wrongnode err=%v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
-				time.Sleep(bo.Pause())
-				continue
+				continue // retry immediately
 			}
 			if err == io.EOF {
 				i++
@@ -466,8 +464,7 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 			node := strings.Split(err.Error(), "|")[1]
 			address = node
 			glog.Errorf("Stream ended with wrongnode err=%v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i-1)
-			time.Sleep(bo.Pause())
-			continue
+			continue // retry immediately
 		}
 		return err
 	}
