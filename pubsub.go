@@ -305,7 +305,6 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 		if err != nil {
 			st, ok := status.FromError(err)
 			if ok {
-				glog.Info("Error: ", st.Code())
 				if st.Code() == codes.Unavailable {
 					i++
 					address = ""
@@ -389,7 +388,6 @@ func Subscribe(ctx context.Context, in *SubscribeRequest) {
 		if err != nil {
 			st, ok := status.FromError(err)
 			if ok {
-				glog.Info("Error: ", st.Code())
 				if st.Code() == codes.Unavailable {
 					i++
 					address = ""
@@ -454,7 +452,6 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 			return nil
 		}
 		if st, ok := status.FromError(err); ok {
-			glog.Info("Error: ", st.Code())
 			if st.Code() == codes.Unavailable {
 				address = ""
 				glog.Errorf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i-1)
@@ -465,7 +462,7 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 		if strings.Contains(err.Error(), "wrongnode") {
 			node := strings.Split(err.Error(), "|")[1]
 			address = node
-			glog.Errorf("Stream ended with wrongnode err=%v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i-1)
+			glog.Errorf("Ack failed with wrongnode err=%v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i-1)
 			continue // retry immediately
 		}
 		return err
