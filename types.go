@@ -1,6 +1,8 @@
 package pubsub
 
 import (
+	"log"
+
 	pb "github.com/alphauslabs/pubsub-proto/v1"
 	"google.golang.org/grpc"
 )
@@ -8,6 +10,8 @@ import (
 type PubSubClient struct {
 	conn       *grpc.ClientConn
 	clientconn *pb.PubSubServiceClient
+	logger     *log.Logger
+	addr       string
 }
 
 type PublishRequest struct {
@@ -22,17 +26,17 @@ type PublishRequest struct {
 type MessageCallback func(ctx any, data []byte) error
 
 type SubscribeAndAckRequest struct {
-	Topic       string
-	Subcription string
-	Ctx         any // arbitrary data passed to callback
-	Callback    MessageCallback
+	Topic        string
+	Subscription string
+	Ctx          any // arbitrary data passed to callback
+	Callback     MessageCallback
 }
 
 type SubscribeRequest struct {
-	Topic       string
-	Subcription string
-	Errch       chan error
-	Outch       chan []byte
+	Topic        string
+	Subscription string
+	Errch        chan error
+	Outch        chan []byte
 }
 
 type SubscribeResponse struct {

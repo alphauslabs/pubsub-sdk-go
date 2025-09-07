@@ -11,7 +11,6 @@ import (
 
 	pb "github.com/alphauslabs/pubsub-proto/v1"
 	"github.com/dchest/uniuri"
-	"github.com/golang/glog"
 	gaxv2 "github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/idtoken"
 	"google.golang.org/grpc"
@@ -27,15 +26,38 @@ func (p *PubSubClient) Close() {
 	}
 }
 
+type Option interface {
+	Apply(*PubSubClient)
+}
+
+type withLogger struct{ l *log.Logger }
+
+type withAddr struct{ aud string }
+
+func (w withLogger) Apply(pbclient *PubSubClient) { pbclient.logger = w.l }
+
+func (w withAddr) Apply(pbclient *PubSubClient) { pbclient.addr = w.aud }
+
+// WithLogger sets PubSubClient's logger object. Can be silenced by setting v to:
+//
+//	log.New(io.Discard, "", 0)
+func WithLogger(v *log.Logger) Option { return withLogger{v} }
+
+func WithAddr(v string) Option { return withAddr{v} }
+
 // New creates a new PubSub client.
-func New(addr ...string) (*PubSubClient, error) {
-	aud := "35.213.109.125:50051"
-	if len(addr) > 0 {
-		if addr[0] != "" {
-			aud = addr[0]
+func New(options ...Option) (*PubSubClient, error) {
+	client := &PubSubClient{}
+	addr := "35.213.109.125:50051" // default
+	if len(options) > 0 {
+		for _, opt := range options {
+			opt.Apply(client)
+		}
+		if client.addr != "" {
+			addr = client.addr
 		}
 	}
-	token, err := idtoken.NewTokenSource(context.Background(), aud)
+	token, err := idtoken.NewTokenSource(context.Background(), addr)
 	if err != nil {
 		return nil, err
 	}
@@ -62,13 +84,14 @@ func New(addr ...string) (*PubSubClient, error) {
 		return streamer(ctx, desc, cc, method, opts...)
 	}))
 
-	conn, err := grpc.NewClient(aud, opts...)
+	conn, err := grpc.NewClient(addr, opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	clientconn := pb.NewPubSubServiceClient(conn)
-	return &PubSubClient{conn: conn, clientconn: &clientconn}, nil
+	client.clientconn = &clientconn
+	return client, nil
 }
 
 // Publish a message to a given topic, with retry mechanism.
@@ -119,7 +142,7 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 
 		st, ok := status.FromError(err)
 		if ok {
-			glog.Info("Error: ", st.Code())
+			c.logger.Printf("Error: %v", st.Code())
 			switch st.Code() {
 			case codes.Unavailable, codes.DeadlineExceeded, codes.ResourceExhausted, codes.Aborted:
 				shouldRetry = true
@@ -131,7 +154,7 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 		}
 
 		pauseTime := bo.Pause()
-		glog.Errorf("Error: %v, retrying in %v, retries left: %v", err, pauseTime, limit-i-1)
+		c.logger.Printf("Error: %v, retrying in %v, retries left: %v", err, pauseTime, limit-i-1)
 		time.Sleep(pauseTime)
 	}
 
@@ -140,23 +163,23 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 
 // Subscribes and Acknowledge the message after processing through the provided callback.
 // Cancelled by ctx, and will send empty struct to done if provided.
-func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...chan struct{}) error {
+func (pbclient *PubSubClient) SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...chan struct{}) error {
 	if in.Callback == nil {
-		return fmt.Errorf("Callback sould not be nil")
+		return fmt.Errorf("callback sould not be nil")
 	}
 
 	if in.Topic == "" {
-		return fmt.Errorf("Topic should not be empty")
+		return fmt.Errorf("topic should not be empty")
 	}
 
-	if in.Subcription == "" {
-		return fmt.Errorf("Subscription should not be empty")
+	if in.Subscription == "" {
+		return fmt.Errorf("subscription should not be empty")
 	}
 
 	localId := uniuri.NewLen(10)
-	log.Printf("Started=%v, time=%v", localId, time.Now().Format(time.RFC3339))
+	pbclient.logger.Printf("Started=%v, time=%v", localId, time.Now().Format(time.RFC3339))
 	defer func(start time.Time) {
-		log.Printf("Stopped=%v, duration=%v", localId, time.Since(start))
+		pbclient.logger.Printf("Stopped=%v, duration=%v", localId, time.Since(start))
 		if len(done) > 0 {
 			done[0] <- struct{}{}
 		}
@@ -170,7 +193,7 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 
 	clientconn := *client.clientconn
 	r, err := clientconn.GetSubscription(ctx, &pb.GetSubscriptionRequest{
-		Name: in.Subcription,
+		Name: in.Subscription,
 	})
 	if err != nil {
 		return err
@@ -180,11 +203,11 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 
 	req := &pb.SubscribeRequest{
 		Topic:        in.Topic,
-		Subscription: in.Subcription,
+		Subscription: in.Subscription,
 	}
 
 	do := func(addr string) error {
-		conn, err := New(addr)
+		conn, err := New(WithAddr(addr))
 		if err != nil {
 			return err
 		}
@@ -208,28 +231,28 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 				if err != nil {
 					if r, ok := err.(Requeuer); ok {
 						if r.ShouldRequeue() {
-							log.Printf("Requeueing message=%v", msg.Id)
+							pbclient.logger.Printf("Requeueing message=%v", msg.Id)
 							ack = false
 							// Explicitly requeue the message, since this subscription is set to autoextend.
 							_, err = clientconn.RequeueMessage(ctx, &pb.RequeueMessageRequest{
 								Topic:        in.Topic,
-								Subscription: in.Subcription,
+								Subscription: in.Subscription,
 								Id:           msg.Id,
 							})
 							if err != nil {
-								log.Printf("RequeueMessage failed: %v", err)
+								pbclient.logger.Printf("RequeueMessage failed: %v", err)
 							}
 						}
 					} else {
-						log.Printf("Callback error: %v", err)
+						pbclient.logger.Printf("Callback error: %v", err)
 					}
 				}
 				if ack {
-					err = client.SendAckWithRetry(ctx, msg.Id, in.Subcription, in.Topic)
+					err = client.SendAckWithRetry(ctx, msg.Id, in.Subscription, in.Topic)
 					if err != nil {
-						log.Printf("Ack error: %v", err)
+						pbclient.logger.Printf("Ack error: %v", err)
 					} else {
-						log.Printf("Acked message %s", msg.Id)
+						pbclient.logger.Printf("Acked message %s", msg.Id)
 					}
 				}
 			default: // autoextend for this subscription is set to false, We manually extend it's timeout before timeout ends, We repeat this until the callback returns
@@ -249,13 +272,13 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 							// Reset timeout for this message
 							_, err := clientconn.ExtendVisibilityTimeout(ctx, &pb.ExtendVisibilityTimeoutRequest{
 								Topic:        in.Topic,
-								Subscription: in.Subcription,
+								Subscription: in.Subscription,
 								Id:           msg.Id,
 							})
 							if err != nil { // If failed, it means the message would be requeued.
-								log.Printf("ExtendVisibilityTimeout failed: %v", err)
+								pbclient.logger.Printf("ExtendVisibilityTimeout failed: %v", err)
 							} else {
-								log.Printf("Extended timeout for message %s", msg.Id)
+								pbclient.logger.Printf("Extended timeout for message %s", msg.Id)
 							}
 						}
 					}
@@ -265,19 +288,19 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 				if err != nil {
 					if r, ok := err.(Requeuer); ok {
 						if r.ShouldRequeue() {
-							log.Printf("Requeueing message=%v", msg.Id)
+							pbclient.logger.Printf("Requeueing message=%v", msg.Id)
 							ack = false
 						}
 					} else {
-						log.Printf("Callback error: %v", err)
+						pbclient.logger.Printf("Callback error: %v", err)
 					}
 				}
 				if ack {
-					err = client.SendAckWithRetry(ctx, msg.Id, in.Subcription, in.Topic)
+					err = client.SendAckWithRetry(ctx, msg.Id, in.Subscription, in.Topic)
 					if err != nil {
-						log.Printf("Ack error: %v", err)
+						pbclient.logger.Printf("Ack error: %v", err)
 					} else {
-						log.Printf("Acked message %s", msg.Id)
+						pbclient.logger.Printf("Acked message %s", msg.Id)
 					}
 				}
 
@@ -308,7 +331,7 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 				if st.Code() == codes.Unavailable {
 					i++
 					address = ""
-					glog.Errorf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
+					client.logger.Printf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
 					time.Sleep(bo.Pause())
 					continue
 				}
@@ -317,13 +340,13 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 				node := strings.Split(err.Error(), "|")[1]
 				address = node
 				i++
-				glog.Errorf("Stream ended with wrongnode err=%v, retrying in %v, retries left: %v", err.Error(), bo.Pause(), limit-i)
+				client.logger.Printf("Stream ended with wrongnode err=%v, retrying in %v, retries left: %v", err.Error(), bo.Pause(), limit-i)
 				continue // retry immediately
 			}
 			if err == io.EOF {
 				i++
 				address = ""
-				glog.Errorf("Stream ended with EOF err=%v, retrying in %v, retries left: %v", err.Error(), bo.Pause(), limit-i)
+				client.logger.Printf("Stream ended with EOF err=%v, retrying in %v, retries left: %v", err.Error(), bo.Pause(), limit-i)
 				time.Sleep(bo.Pause())
 				continue
 			}
@@ -335,7 +358,7 @@ func SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...ch
 
 // Note: Better to use SubscribeAndAck instead.
 // Subscribes to a subscription. Data will be sent to the Outch, while errors on Errch.
-func Subscribe(ctx context.Context, in *SubscribeRequest) {
+func (pbclient *PubSubClient) Subscribe(ctx context.Context, in *SubscribeRequest) {
 	defer func() {
 		close(in.Errch)
 		close(in.Outch)
@@ -343,11 +366,11 @@ func Subscribe(ctx context.Context, in *SubscribeRequest) {
 
 	req := &pb.SubscribeRequest{
 		Topic:        in.Topic,
-		Subscription: in.Subcription,
+		Subscription: in.Subscription,
 	}
 	var clientconn pb.PubSubServiceClient
 	do := func(addr string) error {
-		conn, err := New(addr)
+		conn, err := New(WithAddr(addr))
 		if err != nil {
 			return err
 		}
@@ -391,7 +414,7 @@ func Subscribe(ctx context.Context, in *SubscribeRequest) {
 				if st.Code() == codes.Unavailable {
 					i++
 					address = ""
-					glog.Errorf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
+					pbclient.logger.Printf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
 					time.Sleep(bo.Pause())
 					continue
 				}
@@ -400,13 +423,13 @@ func Subscribe(ctx context.Context, in *SubscribeRequest) {
 				node := strings.Split(err.Error(), "|")[1]
 				address = node
 				i++
-				glog.Errorf("Stream ended with wrongnode err=%v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
+				pbclient.logger.Printf("Stream ended with wrongnode err=%v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
 				continue // retry immediately
 			}
 			if err == io.EOF {
 				i++
 				address = ""
-				glog.Errorf("Stream ended with EOF err=%v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
+				pbclient.logger.Printf("Stream ended with EOF err=%v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
 				time.Sleep(bo.Pause())
 				continue
 			}
@@ -429,7 +452,7 @@ func (p *PubSubClient) SendAck(ctx context.Context, id, subscription, topic stri
 // Sends Acknowledgement for a given message, with retry mechanism.
 func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, topic string) error {
 	do := func(addr string) error {
-		conn, err := New(addr)
+		conn, err := New(WithAddr(addr))
 		if err != nil {
 			return err
 		}
@@ -454,7 +477,7 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 		if st, ok := status.FromError(err); ok {
 			if st.Code() == codes.Unavailable {
 				address = ""
-				glog.Errorf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i-1)
+				p.logger.Printf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i-1)
 				time.Sleep(bo.Pause())
 				continue
 			}
@@ -462,7 +485,7 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 		if strings.Contains(err.Error(), "wrongnode") {
 			node := strings.Split(err.Error(), "|")[1]
 			address = node
-			glog.Errorf("Ack failed with wrongnode err=%v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i-1)
+			p.logger.Printf("Ack failed with wrongnode err=%v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i-1)
 			continue // retry immediately
 		}
 		return err
@@ -486,6 +509,7 @@ func (p *PubSubClient) CreateTopic(ctx context.Context, name string) error {
 
 // Creates a new subscription with the given name and topic, optionally they can set NoAutoExtend to true, but this is not recommended.
 // Since PubSub defaults all subscriptions to auto extend.
+// This function can be called multiple times, if the subscription already exists it will just return nil.
 func (p *PubSubClient) CreateSubscription(ctx context.Context, in *CreateSubscriptionRequest) error {
 	req := &pb.CreateSubscriptionRequest{
 		Topic:        in.Topic,
@@ -495,6 +519,9 @@ func (p *PubSubClient) CreateSubscription(ctx context.Context, in *CreateSubscri
 
 	_, err := (*p.clientconn).CreateSubscription(ctx, req)
 	if err != nil {
+		if strings.Contains(err.Error(), "alreadyexists") {
+			return nil
+		}
 		return err
 	}
 
