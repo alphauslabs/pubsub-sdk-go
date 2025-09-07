@@ -167,7 +167,7 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 
 // Subscribes and Acknowledge the message after processing through the provided callback.
 // Cancelled by ctx, and will send empty struct to done if provided.
-func (pbclient *PubSubClient) SubscribeAndAck(quit context.Context, in *SubscribeAndAckRequest, done ...chan struct{}) error {
+func (pbclient *PubSubClient) Start(quit context.Context, in *SubscribeAndAckRequest, done ...chan struct{}) error {
 	if in.Callback == nil {
 		return fmt.Errorf("callback sould not be nil")
 	}
