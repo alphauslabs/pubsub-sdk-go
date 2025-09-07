@@ -54,12 +54,12 @@ func New(options ...Option) (*PubSubClient, error) {
 		for _, opt := range options {
 			opt.Apply(client)
 		}
-		if client.addr != "" {
-			addr = client.addr
-		}
-		if client.logger == nil {
-			client.logger = log.New(os.Stdout, "pubsub-internal", log.Ldate|log.Ltime|log.Lshortfile)
-		}
+	}
+	if client.addr != "" {
+		addr = client.addr
+	}
+	if client.logger == nil {
+		client.logger = log.New(os.Stdout, "pubsub-internal", log.Ldate|log.Ltime|log.Lshortfile)
 	}
 	token, err := idtoken.NewTokenSource(context.Background(), addr)
 	if err != nil {
