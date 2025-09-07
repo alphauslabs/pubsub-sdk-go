@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -55,6 +56,9 @@ func New(options ...Option) (*PubSubClient, error) {
 		}
 		if client.addr != "" {
 			addr = client.addr
+		}
+		if client.logger == nil {
+			client.logger = log.New(os.Stdout, "pubsub-internal", log.Ldate|log.Ltime|log.Lshortfile)
 		}
 	}
 	token, err := idtoken.NewTokenSource(context.Background(), addr)
