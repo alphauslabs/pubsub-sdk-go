@@ -59,7 +59,7 @@ func New(options ...Option) (*PubSubClient, error) {
 		addr = client.addr
 	}
 	if client.logger == nil {
-		client.logger = log.New(os.Stdout, "pubsub-internal", log.Ldate|log.Ltime|log.Lshortfile)
+		client.logger = log.New(os.Stdout, "[pubsub-internal] ", log.Ldate|log.Ltime|log.Lshortfile)
 	}
 	token, err := idtoken.NewTokenSource(context.Background(), addr)
 	if err != nil {
@@ -335,7 +335,7 @@ func (pbclient *PubSubClient) SubscribeAndAck(ctx context.Context, in *Subscribe
 				if st.Code() == codes.Unavailable {
 					i++
 					address = ""
-					client.logger.Printf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
+					pbclient.logger.Printf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
 					time.Sleep(bo.Pause())
 					continue
 				}
@@ -344,13 +344,13 @@ func (pbclient *PubSubClient) SubscribeAndAck(ctx context.Context, in *Subscribe
 				node := strings.Split(err.Error(), "|")[1]
 				address = node
 				i++
-				client.logger.Printf("Stream ended with wrongnode err=%v, retrying in %v, retries left: %v", err.Error(), bo.Pause(), limit-i)
+				pbclient.logger.Printf("Stream ended with wrongnode err=%v, retrying in %v, retries left: %v", err.Error(), bo.Pause(), limit-i)
 				continue // retry immediately
 			}
 			if err == io.EOF {
 				i++
 				address = ""
-				client.logger.Printf("Stream ended with EOF err=%v, retrying in %v, retries left: %v", err.Error(), bo.Pause(), limit-i)
+				pbclient.logger.Printf("Stream ended with EOF err=%v, retrying in %v, retries left: %v", err.Error(), bo.Pause(), limit-i)
 				time.Sleep(bo.Pause())
 				continue
 			}
