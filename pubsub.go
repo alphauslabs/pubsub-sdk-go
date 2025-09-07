@@ -167,7 +167,7 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 
 // Subscribes and Acknowledge the message after processing through the provided callback.
 // Cancelled by ctx, and will send empty struct to done if provided.
-func (pbclient *PubSubClient) SubscribeAndAck(ctx context.Context, in *SubscribeAndAckRequest, done ...chan struct{}) error {
+func (pbclient *PubSubClient) SubscribeAndAck(quit context.Context, in *SubscribeAndAckRequest, done ...chan struct{}) error {
 	if in.Callback == nil {
 		return fmt.Errorf("callback sould not be nil")
 	}
@@ -179,6 +179,14 @@ func (pbclient *PubSubClient) SubscribeAndAck(ctx context.Context, in *Subscribe
 	if in.Subscription == "" {
 		return fmt.Errorf("subscription should not be empty")
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		<-quit.Done()
+		cancel()
+	}()
 
 	localId := uniuri.NewLen(10)
 	pbclient.logger.Printf("Started=%v, time=%v", localId, time.Now().Format(time.RFC3339))
@@ -338,6 +346,11 @@ func (pbclient *PubSubClient) SubscribeAndAck(ctx context.Context, in *Subscribe
 					pbclient.logger.Printf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
 					time.Sleep(bo.Pause())
 					continue
+				}
+
+				if st.Code() == codes.Canceled {
+					ferr = nil
+					break
 				}
 			}
 			if strings.Contains(err.Error(), "wrongnode") {
