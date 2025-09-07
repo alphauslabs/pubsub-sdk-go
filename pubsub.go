@@ -519,7 +519,7 @@ func (p *PubSubClient) CreateSubscription(ctx context.Context, in *CreateSubscri
 
 	_, err := (*p.clientconn).CreateSubscription(ctx, req)
 	if err != nil {
-		if strings.Contains(err.Error(), "alreadyexists") {
+		if strings.Contains(strings.ToLower(err.Error()), "alreadyexists") {
 			return nil
 		}
 		return err
