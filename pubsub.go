@@ -510,7 +510,7 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 	return lastErr
 }
 
-// Creates a new topic with the given name.
+// Creates a new topic with the given name, this function can be called multiple times, if the topic already exists it will just return nil.
 func (p *PubSubClient) CreateTopic(ctx context.Context, name string) error {
 	req := &pb.CreateTopicRequest{
 		Name: name,
@@ -518,6 +518,9 @@ func (p *PubSubClient) CreateTopic(ctx context.Context, name string) error {
 
 	_, err := (*p.clientconn).CreateTopic(ctx, req)
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "alreadyexists") {
+			return nil
+		}
 		return err
 	}
 
