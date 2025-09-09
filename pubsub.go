@@ -259,7 +259,7 @@ func (pbclient *PubSubClient) Start(quit context.Context, in *SubscribeAndAckReq
 			default: // autoextend for this subscription is set to false, We manually extend it's timeout before timeout ends, We repeat this until the callback returns
 				fdone := make(chan struct{})
 				extender, cancel := context.WithCancel(ctx)
-				t := time.NewTicker(20 * time.Second)
+				t := time.NewTicker(10 * time.Second)
 				go func() {
 					defer func() {
 						close(fdone)
@@ -271,12 +271,8 @@ func (pbclient *PubSubClient) Start(quit context.Context, in *SubscribeAndAckReq
 							return
 						case <-t.C:
 							// Reset timeout for this message
-							_, err := clientconn.ExtendVisibilityTimeout(ctx, &pb.ExtendVisibilityTimeoutRequest{
-								Topic:        in.Topic,
-								Subscription: in.Subscription,
-								Id:           msg.Id,
-							})
-							if err != nil { // If failed, it means the message would be requeued.
+							err := conn.ExtendMessageTimeout(ctx, msg.Id, in.Subscription, in.Topic)
+							if err != nil {
 								pbclient.logger.Printf("ExtendVisibilityTimeout failed: %v", err)
 							} else {
 								pbclient.logger.Printf("Extended timeout for message %s", msg.Id)
@@ -569,16 +565,59 @@ func (p *PubSubClient) GetNumberOfMessages(ctx context.Context, filter ...string
 
 // Extends the timeout for a given message, this is useful when the subscriber needs more time to process the message.
 // The message will be automatically extended if the subscription is created with NoAutoExtend set to false.
-func (p *PubSubClient) ExtendTimeout(ctx context.Context, msgId, subscription, topic string) error {
-	req := &pb.ExtendVisibilityTimeoutRequest{
-		Id:           msgId,
-		Subscription: subscription,
-		Topic:        topic,
+func (p *PubSubClient) ExtendMessageTimeout(ctx context.Context, msgId, subscription, topic string) error {
+	do := func(addr string) error {
+		conn, err := New(WithAddr(addr))
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+		clientconn := *conn.clientconn
+		_, err = clientconn.ExtendVisibilityTimeout(ctx, &pb.ExtendVisibilityTimeoutRequest{
+			Id:           msgId,
+			Subscription: subscription,
+			Topic:        topic,
+		})
+		return err
 	}
 
-	_, err := (*p.clientconn).ExtendVisibilityTimeout(ctx, req)
-	if err != nil {
+	backoff := gaxv2.Backoff{
+		Initial: 5 * time.Second,
+		Max:     1 * time.Minute,
+	}
+	limit := 10
+	var address string
+	var ferr error
+	for i := 0; i < limit; i++ {
+		err := do(address)
+		ferr = err
+		if err == nil {
+			break
+		}
+
+		if st, ok := status.FromError(err); ok {
+			if st.Code() == codes.Unavailable {
+				address = ""
+				btime := backoff.Pause() // backoff time
+				p.logger.Printf("Error: %v, retrying in %v, retries left: %v", err, btime, limit-i-1)
+				time.Sleep(btime)
+				continue
+			}
+		}
+
+		if strings.Contains(strings.ToLower(err.Error()), "wrongnode") {
+			correctNode := strings.Split(err.Error(), "|")[1]
+			address = correctNode
+			btime := backoff.Pause() // backoff time
+			p.logger.Printf("Error: %v, retrying in %v, retries left: %v", err, btime, limit-i-1)
+			time.Sleep(btime)
+			continue
+		}
 		return err
+	}
+
+	if ferr != nil {
+		return ferr
 	}
 
 	return nil
