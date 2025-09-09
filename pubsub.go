@@ -197,14 +197,7 @@ func (pbclient *PubSubClient) Start(quit context.Context, in *SubscribeAndAckReq
 		}
 	}(time.Now())
 
-	client, err := New()
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-
-	clientconn := *client.clientconn
-	r, err := clientconn.GetSubscription(ctx, &pb.GetSubscriptionRequest{
+	r, err := (*pbclient.clientconn).GetSubscription(ctx, &pb.GetSubscriptionRequest{
 		Name: in.Subscription,
 	})
 	if err != nil {
@@ -246,11 +239,7 @@ func (pbclient *PubSubClient) Start(quit context.Context, in *SubscribeAndAckReq
 							pbclient.logger.Printf("Requeueing message=%v", msg.Id)
 							ack = false
 							// Explicitly requeue the message, since this subscription is set to autoextend.
-							_, err = clientconn.RequeueMessage(ctx, &pb.RequeueMessageRequest{
-								Topic:        in.Topic,
-								Subscription: in.Subscription,
-								Id:           msg.Id,
-							})
+							err = conn.RequeueMessage(ctx, msg.Id, in.Subscription, in.Topic)
 							if err != nil {
 								pbclient.logger.Printf("RequeueMessage failed: %v", err)
 							}
@@ -260,7 +249,7 @@ func (pbclient *PubSubClient) Start(quit context.Context, in *SubscribeAndAckReq
 					}
 				}
 				if ack {
-					err = client.SendAckWithRetry(ctx, msg.Id, in.Subscription, in.Topic)
+					err = conn.SendAckWithRetry(ctx, msg.Id, in.Subscription, in.Topic)
 					if err != nil {
 						pbclient.logger.Printf("Ack error: %v", err)
 					} else {
@@ -308,7 +297,7 @@ func (pbclient *PubSubClient) Start(quit context.Context, in *SubscribeAndAckReq
 					}
 				}
 				if ack {
-					err = client.SendAckWithRetry(ctx, msg.Id, in.Subscription, in.Topic)
+					err = conn.SendAckWithRetry(ctx, msg.Id, in.Subscription, in.Topic)
 					if err != nil {
 						pbclient.logger.Printf("Ack error: %v", err)
 					} else {
@@ -590,6 +579,65 @@ func (p *PubSubClient) ExtendTimeout(ctx context.Context, msgId, subscription, t
 	_, err := (*p.clientconn).ExtendVisibilityTimeout(ctx, req)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// Attempt to requeue a message
+func (p *PubSubClient) RequeueMessage(ctx context.Context, msgId, subscription, topic string) error {
+	do := func(addr string) error {
+		conn, err := New(WithAddr(addr))
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+		clientconn := *conn.clientconn
+		_, err = clientconn.RequeueMessage(ctx, &pb.RequeueMessageRequest{
+			Id:           msgId,
+			Subscription: subscription,
+			Topic:        topic,
+		})
+		return err
+	}
+
+	backoff := gaxv2.Backoff{
+		Initial: 5 * time.Second,
+		Max:     1 * time.Minute,
+	}
+	limit := 10
+	var address string
+	var ferr error
+	for i := 0; i < limit; i++ {
+		err := do(address)
+		ferr = err
+		if err == nil {
+			break
+		}
+
+		if st, ok := status.FromError(err); ok {
+			if st.Code() == codes.Unavailable {
+				address = ""
+				btime := backoff.Pause() // backoff time
+				p.logger.Printf("Error: %v, retrying in %v, retries left: %v", err, btime, limit-i-1)
+				time.Sleep(btime)
+				continue
+			}
+		}
+
+		if strings.Contains(strings.ToLower(err.Error()), "wrongnode") {
+			correctNode := strings.Split(err.Error(), "|")[1]
+			address = correctNode
+			btime := backoff.Pause() // backoff time
+			p.logger.Printf("Error: %v, retrying in %v, retries left: %v", err, btime, limit-i-1)
+			time.Sleep(btime)
+			continue
+		}
+		return err
+	}
+
+	if ferr != nil {
+		return ferr
 	}
 
 	return nil
