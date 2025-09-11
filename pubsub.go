@@ -358,7 +358,7 @@ func (pbclient *PubSubClient) Start(quit context.Context, in *SubscribeAndAckReq
 	return ferr
 }
 
-// Note: Better to use SubscribeAndAck instead.
+// Note: Better to use Start instead.
 // Subscribes to a subscription. Data will be sent to the Outch, while errors on Errch.
 func (pbclient *PubSubClient) Subscribe(ctx context.Context, in *SubscribeRequest) {
 	defer func() {
@@ -585,7 +585,7 @@ func (p *PubSubClient) ExtendMessageTimeout(ctx context.Context, msgId, subscrip
 		Initial: 5 * time.Second,
 		Max:     1 * time.Minute,
 	}
-	limit := 10
+	limit := 30
 	var address string
 	var ferr error
 	for i := 0; i < limit; i++ {
@@ -608,9 +608,7 @@ func (p *PubSubClient) ExtendMessageTimeout(ctx context.Context, msgId, subscrip
 		if strings.Contains(strings.ToLower(err.Error()), "wrongnode") {
 			correctNode := strings.Split(err.Error(), "|")[1]
 			address = correctNode
-			btime := backoff.Pause() // backoff time
-			p.logger.Printf("Error: %v, retrying in %v, retries left: %v", err, btime, limit-i-1)
-			time.Sleep(btime)
+			p.logger.Printf("Error: %v, retries left: %v", err, limit-i-1)
 			continue
 		}
 		return err
@@ -644,7 +642,7 @@ func (p *PubSubClient) RequeueMessage(ctx context.Context, msgId, subscription, 
 		Initial: 5 * time.Second,
 		Max:     1 * time.Minute,
 	}
-	limit := 10
+	limit := 30
 	var address string
 	var ferr error
 	for i := 0; i < limit; i++ {
@@ -667,9 +665,7 @@ func (p *PubSubClient) RequeueMessage(ctx context.Context, msgId, subscription, 
 		if strings.Contains(strings.ToLower(err.Error()), "wrongnode") {
 			correctNode := strings.Split(err.Error(), "|")[1]
 			address = correctNode
-			btime := backoff.Pause() // backoff time
-			p.logger.Printf("Error: %v, retrying in %v, retries left: %v", err, btime, limit-i-1)
-			time.Sleep(btime)
+			p.logger.Printf("Error: %v, retries left: %v", err, limit-i-1)
 			continue
 		}
 		return err
