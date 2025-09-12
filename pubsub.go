@@ -106,17 +106,13 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 		Attributes: in.Attributes,
 	}
 
-	do := func(iter int) error {
-		clientconn := *c.clientconn
-		if iter != 0 {
-			conn, err := New()
-			if err != nil {
-				return err
-			}
-			clientconn = *conn.clientconn
-			defer conn.Close()
+	do := func() error {
+		conn, err := New()
+		if err != nil {
+			return err
 		}
-		_, err := clientconn.Publish(ctx, req)
+		defer conn.Close()
+		_, err = (*conn.clientconn).Publish(ctx, req)
 		if err != nil {
 			return err
 		}
@@ -132,18 +128,14 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 	if limit == 0 {
 		limit = 10
 	}
-	var finalErr error
 
-	for i := 0; i < limit; i++ {
-		err := do(i)
+	for {
+		err := do()
 		if err == nil {
 			return nil
 		}
 
-		finalErr = err
-
 		shouldRetry := false
-
 		st, ok := status.FromError(err)
 		if ok {
 			c.logger.Printf("Error: %v", st.Code())
@@ -153,16 +145,14 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 			}
 		}
 
-		if !shouldRetry || i == limit-1 {
-			break
+		if !shouldRetry {
+			return err
 		}
 
 		pauseTime := bo.Pause()
-		c.logger.Printf("Error: %v, retrying in %v, retries left: %v", err, pauseTime, limit-i-1)
+		c.logger.Printf("Error: %v, retrying in %v", err, pauseTime)
 		time.Sleep(pauseTime)
 	}
-
-	return finalErr
 }
 
 // Subscribes and Acknowledge the message after processing through the provided callback.
@@ -311,51 +301,42 @@ func (pbclient *PubSubClient) Start(quit context.Context, in *SubscribeAndAckReq
 		Initial: 5 * time.Second,
 		Max:     1 * time.Minute,
 	}
-	limit := 30
-	i := 0
-	var ferr error
 	var address string
 	// Loop for retry
 	for {
-		if i >= limit {
-			break
-		}
 		err := do(address)
-		ferr = err
 		if err != nil {
 			st, ok := status.FromError(err)
 			if ok {
 				if st.Code() == codes.Unavailable {
-					i++
 					address = ""
-					pbclient.logger.Printf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
+					pbclient.logger.Printf("Error: %v, retrying in %v", err, bo.Pause())
 					time.Sleep(bo.Pause())
 					continue
 				}
 
 				if st.Code() == codes.Canceled {
-					ferr = nil
 					break
 				}
 			}
 			if strings.Contains(err.Error(), "wrongnode") {
 				node := strings.Split(err.Error(), "|")[1]
 				address = node
-				i++
-				pbclient.logger.Printf("Stream ended with wrongnode err=%v, retrying in %v, retries left: %v", err.Error(), bo.Pause(), limit-i)
+				pbclient.logger.Printf("Stream ended with wrongnode err=%v, retrying in %v", err.Error(), bo.Pause())
 				continue // retry immediately
 			}
 			if err == io.EOF {
-				i++
 				address = ""
-				pbclient.logger.Printf("Stream ended with EOF err=%v, retrying in %v, retries left: %v", err.Error(), bo.Pause(), limit-i)
+				pbclient.logger.Printf("Stream ended with EOF err=%v, retrying in %v", err.Error(), bo.Pause())
 				time.Sleep(bo.Pause())
 				continue
 			}
-			break
+			return err
 		}
+		break
 	}
-	return ferr
+
+	return nil
 }
 
 // Note: Better to use Start instead.
@@ -403,20 +384,15 @@ func (pbclient *PubSubClient) Subscribe(ctx context.Context, in *SubscribeReques
 		Initial: 5 * time.Second,
 		Max:     1 * time.Minute,
 	}
-	limit := 30
-	i := 0
+
 	for {
-		if i >= limit {
-			break
-		}
 		err := do(address)
 		if err != nil {
 			st, ok := status.FromError(err)
 			if ok {
 				if st.Code() == codes.Unavailable {
-					i++
 					address = ""
-					pbclient.logger.Printf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
+					pbclient.logger.Printf("Error: %v, retrying in %v", err, bo.Pause())
 					time.Sleep(bo.Pause())
 					continue
 				}
@@ -424,18 +400,19 @@ func (pbclient *PubSubClient) Subscribe(ctx context.Context, in *SubscribeReques
 			if strings.Contains(err.Error(), "wrongnode") {
 				node := strings.Split(err.Error(), "|")[1]
 				address = node
-				i++
-				pbclient.logger.Printf("Stream ended with wrongnode err=%v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
+				pbclient.logger.Printf("Stream ended with wrongnode err=%v, retrying in %v", err, bo.Pause())
 				continue // retry immediately
 			}
 			if err == io.EOF {
-				i++
 				address = ""
-				pbclient.logger.Printf("Stream ended with EOF err=%v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i)
+				pbclient.logger.Printf("Stream ended with EOF err=%v, retrying in %v", err, bo.Pause())
 				time.Sleep(bo.Pause())
 				continue
 			}
 			in.Errch <- err
+			break
+		} else {
+			in.Errch <- nil
 			break
 		}
 	}
@@ -468,18 +445,15 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 		Max:     1 * time.Minute,
 	}
 	var address string
-	limit := 30
-	var lastErr error
-	for i := 1; i <= limit; i++ {
+	for {
 		err := do(address)
-		lastErr = err
 		if err == nil {
-			return nil
+			break
 		}
 		if st, ok := status.FromError(err); ok {
 			if st.Code() == codes.Unavailable {
 				address = ""
-				p.logger.Printf("Error: %v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i-1)
+				p.logger.Printf("Error: %v, retrying in %v", err, bo.Pause())
 				time.Sleep(bo.Pause())
 				continue
 			}
@@ -487,12 +461,13 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 		if strings.Contains(err.Error(), "wrongnode") {
 			node := strings.Split(err.Error(), "|")[1]
 			address = node
-			p.logger.Printf("Ack failed with wrongnode err=%v, retrying in %v, retries left: %v", err, bo.Pause(), limit-i-1)
+			p.logger.Printf("Ack failed with wrongnode err=%v, retrying in %v", err, bo.Pause())
 			continue // retry immediately
 		}
 		return err
 	}
-	return lastErr
+
+	return nil
 }
 
 // Creates a new topic with the given name, this function can be called multiple times, if the topic already exists it will just return nil.
@@ -585,12 +560,10 @@ func (p *PubSubClient) ExtendMessageTimeout(ctx context.Context, msgId, subscrip
 		Initial: 5 * time.Second,
 		Max:     1 * time.Minute,
 	}
-	limit := 30
+
 	var address string
-	var ferr error
-	for i := 0; i < limit; i++ {
+	for {
 		err := do(address)
-		ferr = err
 		if err == nil {
 			break
 		}
@@ -599,7 +572,7 @@ func (p *PubSubClient) ExtendMessageTimeout(ctx context.Context, msgId, subscrip
 			if st.Code() == codes.Unavailable {
 				address = ""
 				btime := backoff.Pause() // backoff time
-				p.logger.Printf("Error: %v, retrying in %v, retries left: %v", err, btime, limit-i-1)
+				p.logger.Printf("Error: %v, retrying in %v", err, btime)
 				time.Sleep(btime)
 				continue
 			}
@@ -608,14 +581,11 @@ func (p *PubSubClient) ExtendMessageTimeout(ctx context.Context, msgId, subscrip
 		if strings.Contains(strings.ToLower(err.Error()), "wrongnode") {
 			correctNode := strings.Split(err.Error(), "|")[1]
 			address = correctNode
-			p.logger.Printf("Error: %v, retries left: %v", err, limit-i-1)
+			p.logger.Printf("Error: %v retrying..", err)
 			continue
 		}
-		return err
-	}
 
-	if ferr != nil {
-		return ferr
+		return err
 	}
 
 	return nil
@@ -642,12 +612,9 @@ func (p *PubSubClient) RequeueMessage(ctx context.Context, msgId, subscription, 
 		Initial: 5 * time.Second,
 		Max:     1 * time.Minute,
 	}
-	limit := 30
 	var address string
-	var ferr error
-	for i := 0; i < limit; i++ {
+	for {
 		err := do(address)
-		ferr = err
 		if err == nil {
 			break
 		}
@@ -656,7 +623,7 @@ func (p *PubSubClient) RequeueMessage(ctx context.Context, msgId, subscription, 
 			if st.Code() == codes.Unavailable {
 				address = ""
 				btime := backoff.Pause() // backoff time
-				p.logger.Printf("Error: %v, retrying in %v, retries left: %v", err, btime, limit-i-1)
+				p.logger.Printf("Error: %v, retrying in %v", err, btime)
 				time.Sleep(btime)
 				continue
 			}
@@ -665,14 +632,10 @@ func (p *PubSubClient) RequeueMessage(ctx context.Context, msgId, subscription, 
 		if strings.Contains(strings.ToLower(err.Error()), "wrongnode") {
 			correctNode := strings.Split(err.Error(), "|")[1]
 			address = correctNode
-			p.logger.Printf("Error: %v, retries left: %v", err, limit-i-1)
+			p.logger.Printf("Error: %v retrying..", err)
 			continue
 		}
 		return err
-	}
-
-	if ferr != nil {
-		return ferr
 	}
 
 	return nil
