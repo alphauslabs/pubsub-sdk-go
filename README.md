@@ -1,5 +1,5 @@
 
-Go SDK for interacting with internal PubSub service. **(WIP)** 
+Go SDK for interacting with internal PubSub service.
 
 ## Installation
 
