@@ -430,44 +430,58 @@ func (p *PubSubClient) SendAck(ctx context.Context, id, subscription, topic stri
 
 // Sends Acknowledgement for a given message, with retry mechanism.
 func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, topic string) error {
-	do := func(addr string) error {
-		conn, err := New(WithAddr(addr))
-		if err != nil {
-			return err
-		}
-		defer conn.Close()
-		clientconn := *conn.clientconn
-		_, err = clientconn.Acknowledge(ctx, &pb.AcknowledgeRequest{Id: id, Subscription: subscription, Topic: topic})
-		return err
-	}
+	var conn *PubSubClient
+	var address string
+
 	bo := gaxv2.Backoff{
 		Initial: 5 * time.Second,
 		Max:     1 * time.Minute,
 	}
-	var address string
+
 	for {
-		err := do(address)
-		if err == nil {
-			break
+		// Only create new connection if needed
+		if conn == nil {
+			var err error
+			conn, err = New(WithAddr(address), WithLogger(p.logger))
+			if err != nil {
+				return fmt.Errorf("failed to create connection: %w", err)
+			}
+			defer conn.Close()
 		}
+
+		if conn.clientconn == nil {
+			return fmt.Errorf("client connection is nil")
+		}
+
+		// Try to acknowledge
+		_, err := (*conn.clientconn).Acknowledge(ctx, &pb.AcknowledgeRequest{
+			Id:           id,
+			Subscription: subscription,
+			Topic:        topic,
+		})
+
+		if err == nil {
+			return nil
+		}
+
+		// Handle errors and retry logic
 		if st, ok := status.FromError(err); ok {
 			if st.Code() == codes.Unavailable {
 				address = ""
-				p.logger.Printf("Error: %v, retrying in %v", err, bo.Pause())
 				time.Sleep(bo.Pause())
 				continue
 			}
 		}
+
 		if strings.Contains(err.Error(), "wrongnode") {
-			node := strings.Split(err.Error(), "|")[1]
-			address = node
-			p.logger.Printf("Ack failed with wrongnode err=%v, retrying in %v", err, bo.Pause())
-			continue // retry immediately
+			address = strings.Split(err.Error(), "|")[1]
+			conn.Close() // Explicitly close before retry
+			conn = nil
+			continue
 		}
+
 		return err
 	}
-
-	return nil
 }
 
 // Creates a new topic with the given name, this function can be called multiple times, if the topic already exists it will just return nil.
