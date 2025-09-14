@@ -22,8 +22,8 @@ import (
 )
 
 func (p *PubSubClient) Close() {
-	if p.conn != nil {
-		p.conn.Close()
+	for _, p := range p.conns {
+		p.Close()
 	}
 }
 
@@ -33,18 +33,12 @@ type Option interface {
 
 type withLogger struct{ l *log.Logger }
 
-type withAddr struct{ aud string }
-
 func (w withLogger) Apply(pbclient *PubSubClient) { pbclient.logger = w.l }
-
-func (w withAddr) Apply(pbclient *PubSubClient) { pbclient.addr = w.aud }
 
 // WithLogger sets PubSubClient's logger object. Can be silenced by setting v to:
 //
 //	log.New(io.Discard, "", 0)
 func WithLogger(v *log.Logger) Option { return withLogger{v} }
-
-func WithAddr(v string) Option { return withAddr{v} }
 
 // New creates a new PubSub client.
 func New(options ...Option) (*PubSubClient, error) {
@@ -55,9 +49,7 @@ func New(options ...Option) (*PubSubClient, error) {
 			opt.Apply(client)
 		}
 	}
-	if client.addr != "" {
-		addr = client.addr
-	}
+
 	if client.logger == nil {
 		client.logger = log.New(os.Stdout, "[pubsub-internal] ", log.Ldate|log.Ltime|log.Lshortfile)
 	}
@@ -93,8 +85,15 @@ func New(options ...Option) (*PubSubClient, error) {
 		return nil, err
 	}
 
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	if client.conns == nil {
+		client.conns = make(map[string]*grpc.ClientConn)
+	}
+	client.conns[addr] = conn
 	clientconn := pb.NewPubSubServiceClient(conn)
 	client.clientconn = &clientconn
+
 	return client, nil
 }
 
@@ -157,7 +156,7 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 
 // Subscribes and Acknowledge the message after processing through the provided callback.
 // Cancelled by ctx, and will send empty struct to done if provided.
-func (pbclient *PubSubClient) Start(quit context.Context, in *SubscribeAndAckRequest, done ...chan struct{}) error {
+func (p *PubSubClient) Start(quit context.Context, in *SubscribeAndAckRequest, done ...chan struct{}) error {
 	if in.Callback == nil {
 		return fmt.Errorf("callback sould not be nil")
 	}
@@ -179,15 +178,15 @@ func (pbclient *PubSubClient) Start(quit context.Context, in *SubscribeAndAckReq
 	}()
 
 	localId := uniuri.NewLen(10)
-	pbclient.logger.Printf("Started=%v, time=%v", localId, time.Now().Format(time.RFC3339))
+	p.logger.Printf("Started=%v, time=%v", localId, time.Now().Format(time.RFC3339))
 	defer func(start time.Time) {
-		pbclient.logger.Printf("Stopped=%v, duration=%v", localId, time.Since(start))
+		p.logger.Printf("Stopped=%v, duration=%v", localId, time.Since(start))
 		if len(done) > 0 {
 			done[0] <- struct{}{}
 		}
 	}(time.Now())
 
-	r, err := (*pbclient.clientconn).GetSubscription(ctx, &pb.GetSubscriptionRequest{
+	r, err := (*p.clientconn).GetSubscription(ctx, &pb.GetSubscriptionRequest{
 		Name: in.Subscription,
 	})
 	if err != nil {
@@ -195,24 +194,20 @@ func (pbclient *PubSubClient) Start(quit context.Context, in *SubscribeAndAckReq
 	}
 
 	autoExtend := r.Subscription.AutoExtend
-
 	req := &pb.SubscribeRequest{
 		Topic:        in.Topic,
 		Subscription: in.Subscription,
 	}
 
 	do := func(addr string) error {
-		conn, err := New(WithAddr(addr))
+		pbclient, err := p.getClient(addr)
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
-		clientconn := *conn.clientconn
-		stream, err := clientconn.Subscribe(ctx, req)
+		stream, err := (*pbclient.clientconn).Subscribe(ctx, req)
 		if err != nil {
 			return err
 		}
-
 		// Loop for receiving messages
 		for {
 			msg, err := stream.Recv()
@@ -229,7 +224,7 @@ func (pbclient *PubSubClient) Start(quit context.Context, in *SubscribeAndAckReq
 							pbclient.logger.Printf("Requeueing message=%v", msg.Id)
 							ack = false
 							// Explicitly requeue the message, since this subscription is set to autoextend.
-							err = conn.RequeueMessage(ctx, msg.Id, in.Subscription, in.Topic)
+							err = pbclient.RequeueMessage(ctx, msg.Id, in.Subscription, in.Topic)
 							if err != nil {
 								pbclient.logger.Printf("RequeueMessage failed: %v", err)
 							}
@@ -239,7 +234,7 @@ func (pbclient *PubSubClient) Start(quit context.Context, in *SubscribeAndAckReq
 					}
 				}
 				if ack {
-					err = conn.SendAckWithRetry(ctx, msg.Id, in.Subscription, in.Topic)
+					err = pbclient.SendAckWithRetry(ctx, msg.Id, in.Subscription, in.Topic)
 					if err != nil {
 						pbclient.logger.Printf("Ack error: %v", err)
 					} else {
@@ -261,7 +256,7 @@ func (pbclient *PubSubClient) Start(quit context.Context, in *SubscribeAndAckReq
 							return
 						case <-t.C:
 							// Reset timeout for this message
-							err := conn.ExtendMessageTimeout(ctx, msg.Id, in.Subscription, in.Topic)
+							err := pbclient.ExtendMessageTimeout(ctx, msg.Id, in.Subscription, in.Topic)
 							if err != nil {
 								pbclient.logger.Printf("ExtendVisibilityTimeout failed: %v", err)
 							} else {
@@ -283,7 +278,7 @@ func (pbclient *PubSubClient) Start(quit context.Context, in *SubscribeAndAckReq
 					}
 				}
 				if ack {
-					err = conn.SendAckWithRetry(ctx, msg.Id, in.Subscription, in.Topic)
+					err = pbclient.SendAckWithRetry(ctx, msg.Id, in.Subscription, in.Topic)
 					if err != nil {
 						pbclient.logger.Printf("Ack error: %v", err)
 					} else {
@@ -310,7 +305,7 @@ func (pbclient *PubSubClient) Start(quit context.Context, in *SubscribeAndAckReq
 			if ok {
 				if st.Code() == codes.Unavailable {
 					address = ""
-					pbclient.logger.Printf("Error: %v, retrying in %v", err, bo.Pause())
+					p.logger.Printf("Error: %v, retrying in %v", err, bo.Pause())
 					time.Sleep(bo.Pause())
 					continue
 				}
@@ -322,12 +317,12 @@ func (pbclient *PubSubClient) Start(quit context.Context, in *SubscribeAndAckReq
 			if strings.Contains(err.Error(), "wrongnode") {
 				node := strings.Split(err.Error(), "|")[1]
 				address = node
-				pbclient.logger.Printf("Stream ended with wrongnode err=%v, retrying in %v", err.Error(), bo.Pause())
+				p.logger.Printf("Stream ended with wrongnode err=%v, retrying in %v", err.Error(), bo.Pause())
 				continue // retry immediately
 			}
 			if err == io.EOF {
 				address = ""
-				pbclient.logger.Printf("Stream ended with EOF err=%v, retrying in %v", err.Error(), bo.Pause())
+				p.logger.Printf("Stream ended with EOF err=%v, retrying in %v", err.Error(), bo.Pause())
 				time.Sleep(bo.Pause())
 				continue
 			}
@@ -351,15 +346,13 @@ func (pbclient *PubSubClient) Subscribe(ctx context.Context, in *SubscribeReques
 		Topic:        in.Topic,
 		Subscription: in.Subscription,
 	}
-	var clientconn pb.PubSubServiceClient
 	do := func(addr string) error {
-		conn, err := New(WithAddr(addr))
+		pbclient, err := pbclient.getClient(addr)
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
-		clientconn = *conn.clientconn
-		stream, err := clientconn.Subscribe(ctx, req)
+
+		stream, err := (*pbclient.clientconn).Subscribe(ctx, req)
 		if err != nil {
 			return err
 		}
@@ -430,7 +423,7 @@ func (p *PubSubClient) SendAck(ctx context.Context, id, subscription, topic stri
 
 // Sends Acknowledgement for a given message, with retry mechanism.
 func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, topic string) error {
-	var conn *PubSubClient
+	pbclient := p
 	var address string
 
 	bo := gaxv2.Backoff{
@@ -439,22 +432,18 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 	}
 
 	for {
-		// Only create new connection if needed
-		if conn == nil {
-			var err error
-			conn, err = New(WithAddr(address), WithLogger(p.logger))
-			if err != nil {
-				return fmt.Errorf("failed to create connection: %w", err)
-			}
-			defer conn.Close()
+		var err error
+		pbclient, err = p.getClient(address)
+		if err != nil {
+			return fmt.Errorf("failed to create connection: %w", err)
 		}
 
-		if conn.clientconn == nil {
+		if pbclient.clientconn == nil {
 			return fmt.Errorf("client connection is nil")
 		}
 
 		// Try to acknowledge
-		_, err := (*conn.clientconn).Acknowledge(ctx, &pb.AcknowledgeRequest{
+		_, err = (*pbclient.clientconn).Acknowledge(ctx, &pb.AcknowledgeRequest{
 			Id:           id,
 			Subscription: subscription,
 			Topic:        topic,
@@ -475,8 +464,8 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 
 		if strings.Contains(err.Error(), "wrongnode") {
 			address = strings.Split(err.Error(), "|")[1]
-			conn.Close() // Explicitly close before retry
-			conn = nil
+			pbclient.Close() // Explicitly close before retry
+			pbclient = nil
 			continue
 		}
 
@@ -556,13 +545,11 @@ func (p *PubSubClient) GetNumberOfMessages(ctx context.Context, filter ...string
 // The message will be automatically extended if the subscription is created with NoAutoExtend set to false.
 func (p *PubSubClient) ExtendMessageTimeout(ctx context.Context, msgId, subscription, topic string) error {
 	do := func(addr string) error {
-		conn, err := New(WithAddr(addr))
+		pbclient, err := p.getClient(addr)
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
-		clientconn := *conn.clientconn
-		_, err = clientconn.ExtendVisibilityTimeout(ctx, &pb.ExtendVisibilityTimeoutRequest{
+		_, err = (*pbclient.clientconn).ExtendVisibilityTimeout(ctx, &pb.ExtendVisibilityTimeoutRequest{
 			Id:           msgId,
 			Subscription: subscription,
 			Topic:        topic,
@@ -608,13 +595,11 @@ func (p *PubSubClient) ExtendMessageTimeout(ctx context.Context, msgId, subscrip
 // Attempt to requeue a message
 func (p *PubSubClient) RequeueMessage(ctx context.Context, msgId, subscription, topic string) error {
 	do := func(addr string) error {
-		conn, err := New(WithAddr(addr))
+		pbclient, err := p.getClient(addr)
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
-		clientconn := *conn.clientconn
-		_, err = clientconn.RequeueMessage(ctx, &pb.RequeueMessageRequest{
+		_, err = (*pbclient.clientconn).RequeueMessage(ctx, &pb.RequeueMessageRequest{
 			Id:           msgId,
 			Subscription: subscription,
 			Topic:        topic,
@@ -653,4 +638,57 @@ func (p *PubSubClient) RequeueMessage(ctx context.Context, msgId, subscription, 
 	}
 
 	return nil
+}
+
+func (p *PubSubClient) getClient(addr string) (*PubSubClient, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.conns == nil {
+		p.conns = make(map[string]*grpc.ClientConn)
+	}
+
+	if addr == "" {
+		addr = "35.213.109.125:50051" // default
+	}
+	if _, ok := p.conns[addr]; ok {
+		return p, nil
+	}
+
+	token, err := idtoken.NewTokenSource(context.Background(), addr)
+	if err != nil {
+		return nil, err
+	}
+
+	tk, err := token.Token()
+	if err != nil {
+		return nil, err
+	}
+
+	var opts []grpc.DialOption
+	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	opts = append(opts, grpc.WithBlock())
+	opts = append(opts, grpc.WithUnaryInterceptor(func(ctx context.Context,
+		method string, req, reply interface{}, cc *grpc.ClientConn,
+		invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}))
+
+	opts = append(opts, grpc.WithStreamInterceptor(func(ctx context.Context,
+		desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer,
+		opts ...grpc.CallOption) (grpc.ClientStream, error) {
+		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
+		return streamer(ctx, desc, cc, method, opts...)
+	}))
+
+	conn, err := grpc.NewClient(addr, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	p.conns[addr] = conn
+	clientconn := pb.NewPubSubServiceClient(conn)
+	p.clientconn = &clientconn
+	return p, nil
 }

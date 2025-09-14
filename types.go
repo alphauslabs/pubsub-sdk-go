@@ -2,16 +2,17 @@ package pubsub
 
 import (
 	"log"
+	"sync"
 
 	pb "github.com/alphauslabs/pubsub-proto/v1"
 	"google.golang.org/grpc"
 )
 
 type PubSubClient struct {
-	conn       *grpc.ClientConn
+	conns      map[string]*grpc.ClientConn
 	clientconn *pb.PubSubServiceClient
 	logger     *log.Logger
-	addr       string
+	mu         sync.Mutex
 }
 
 type PublishRequest struct {
