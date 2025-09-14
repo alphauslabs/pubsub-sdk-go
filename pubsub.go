@@ -464,8 +464,6 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 
 		if strings.Contains(err.Error(), "wrongnode") {
 			address = strings.Split(err.Error(), "|")[1]
-			pbclient.Close() // Explicitly close before retry
-			pbclient = nil
 			continue
 		}
 
