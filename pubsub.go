@@ -592,7 +592,7 @@ func (p *PubSubClient) ExtendMessageTimeout(ctx context.Context, msgId, subscrip
 	return nil
 }
 
-// Attempt to requeue a message
+// Attempt to requeue a message, with retry mechanism.
 func (p *PubSubClient) RequeueMessage(ctx context.Context, msgId, subscription, topic string) error {
 	do := func(addr string) error {
 		pbclient, err := p.getClient(addr)
@@ -651,7 +651,10 @@ func (p *PubSubClient) getClient(addr string) (*PubSubClient, error) {
 	if addr == "" {
 		addr = "35.213.109.125:50051" // default
 	}
-	if _, ok := p.conns[addr]; ok {
+
+	if c, ok := p.conns[addr]; ok { // no need to dial again
+		clientconn := pb.NewPubSubServiceClient(c)
+		p.clientconn = &clientconn
 		return p, nil
 	}
 

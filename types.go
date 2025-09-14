@@ -49,7 +49,7 @@ type SubscribeResponse struct {
 type CreateSubscriptionRequest struct {
 	Topic        string
 	Name         string
-	NoAutoExtend bool // if true, messages will not be auto extended, recommended to be false
+	NoAutoExtend bool // if true, messages will not be auto extended.
 }
 
 type GetNumberOfMessagesResponse struct {
