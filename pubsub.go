@@ -17,7 +17,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/credentials/oauth"
 	"google.golang.org/grpc/status"
 )
 
@@ -58,27 +58,28 @@ func New(options ...Option) (*PubSubClient, error) {
 		return nil, err
 	}
 
-	tk, err := token.Token()
-	if err != nil {
-		return nil, err
-	}
+	// tk, err := token.Token()
+	// if err != nil {
+	// 	return nil, err
+	// }
 
 	var opts []grpc.DialOption
 	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	opts = append(opts, grpc.WithBlock())
-	opts = append(opts, grpc.WithUnaryInterceptor(func(ctx context.Context,
-		method string, req, reply interface{}, cc *grpc.ClientConn,
-		invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
-		return invoker(ctx, method, req, reply, cc, opts...)
-	}))
+	// opts = append(opts, grpc.WithUnaryInterceptor(func(ctx context.Context,
+	// 	method string, req, reply interface{}, cc *grpc.ClientConn,
+	// 	invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	// 	ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
+	// 	return invoker(ctx, method, req, reply, cc, opts...)
+	// }))
 
-	opts = append(opts, grpc.WithStreamInterceptor(func(ctx context.Context,
-		desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer,
-		opts ...grpc.CallOption) (grpc.ClientStream, error) {
-		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
-		return streamer(ctx, desc, cc, method, opts...)
-	}))
+	// opts = append(opts, grpc.WithStreamInterceptor(func(ctx context.Context,
+	// 	desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer,
+	// 	opts ...grpc.CallOption) (grpc.ClientStream, error) {
+	// 	ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
+	// 	return streamer(ctx, desc, cc, method, opts...)
+	// }))
+	opts = append(opts, grpc.WithPerRPCCredentials(oauth.TokenSource{TokenSource: token}))
 
 	conn, err := grpc.NewClient(addr, opts...)
 	if err != nil {
@@ -661,28 +662,29 @@ func (p *PubSubClient) getClient(addr string) (*PubSubClient, error) {
 		return nil, err
 	}
 
-	tk, err := token.Token()
-	if err != nil {
-		return nil, err
-	}
+	// tk, err := token.Token()
+	// if err != nil {
+	// 	return nil, err
+	// }
 
 	var opts []grpc.DialOption
 	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	opts = append(opts, grpc.WithBlock())
-	opts = append(opts, grpc.WithUnaryInterceptor(func(ctx context.Context,
-		method string, req, reply interface{}, cc *grpc.ClientConn,
-		invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
-		return invoker(ctx, method, req, reply, cc, opts...)
-	}))
+	// opts = append(opts, grpc.WithUnaryInterceptor(func(ctx context.Context,
+	// 	method string, req, reply interface{}, cc *grpc.ClientConn,
+	// 	invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	// 	ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
+	// 	return invoker(ctx, method, req, reply, cc, opts...)
+	// }))
 
-	opts = append(opts, grpc.WithStreamInterceptor(func(ctx context.Context,
-		desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer,
-		opts ...grpc.CallOption) (grpc.ClientStream, error) {
-		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
-		return streamer(ctx, desc, cc, method, opts...)
-	}))
+	// opts = append(opts, grpc.WithStreamInterceptor(func(ctx context.Context,
+	// 	desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer,
+	// 	opts ...grpc.CallOption) (grpc.ClientStream, error) {
+	// 	ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
+	// 	return streamer(ctx, desc, cc, method, opts...)
+	// }))
 
+	opts = append(opts, grpc.WithPerRPCCredentials(oauth.TokenSource{TokenSource: token}))
 	conn, err := grpc.NewClient(addr, opts...)
 	if err != nil {
 		return nil, err
