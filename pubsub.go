@@ -65,10 +65,9 @@ func New(options ...Option) (*PubSubClient, error) {
 		method string, req, reply interface{}, cc *grpc.ClientConn,
 		invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		tk, err := token.Token()
-		if err != nil {
-			return err
+		if err == nil {
+			ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
 		}
-		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
 		return invoker(ctx, method, req, reply, cc, opts...)
 	}))
 
@@ -76,10 +75,9 @@ func New(options ...Option) (*PubSubClient, error) {
 		desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer,
 		opts ...grpc.CallOption) (grpc.ClientStream, error) {
 		tk, err := token.Token()
-		if err != nil {
-			return nil, err
+		if err == nil {
+			ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
 		}
-		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
 		return streamer(ctx, desc, cc, method, opts...)
 	}))
 
@@ -671,10 +669,9 @@ func (p *PubSubClient) getClient(addr string) (*PubSubClient, error) {
 		method string, req, reply interface{}, cc *grpc.ClientConn,
 		invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		tk, err := token.Token()
-		if err != nil {
-			return err
+		if err == nil {
+			ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
 		}
-		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
 		return invoker(ctx, method, req, reply, cc, opts...)
 	}))
 
@@ -682,10 +679,9 @@ func (p *PubSubClient) getClient(addr string) (*PubSubClient, error) {
 		desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer,
 		opts ...grpc.CallOption) (grpc.ClientStream, error) {
 		tk, err := token.Token()
-		if err != nil {
-			return nil, err
+		if err == nil {
+			ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
 		}
-		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
 		return streamer(ctx, desc, cc, method, opts...)
 	}))
 	conn, err := grpc.NewClient(addr, opts...)
