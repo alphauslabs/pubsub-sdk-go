@@ -342,7 +342,6 @@ func (pbclient *PubSubClient) Subscribe(ctx context.Context, in *SubscribeReques
 		close(in.Errch)
 		close(in.Outch)
 	}()
-	msgs := make(map[string]struct{})
 	req := &pb.SubscribeRequest{
 		Topic:        in.Topic,
 		Subscription: in.Subscription,
@@ -362,11 +361,6 @@ func (pbclient *PubSubClient) Subscribe(ctx context.Context, in *SubscribeReques
 			msg, err := stream.Recv()
 			if err != nil {
 				return err
-			}
-			if _, ok := msgs[msg.Id]; ok {
-				continue
-			} else {
-				msgs[msg.Id] = struct{}{}
 			}
 			res := &SubscribeResponse{
 				Id:         msg.Id,
