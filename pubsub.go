@@ -431,8 +431,8 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 		Max:     1 * time.Minute,
 	}
 
-	for {
-		var err error
+	var err error
+	for range 30 {
 		pbclient, err = p.getClient(address)
 		if err != nil {
 			return fmt.Errorf("failed to create connection: %w", err)
@@ -469,6 +469,8 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 
 		return err
 	}
+
+	return err
 }
 
 // Creates a new topic with the given name, this function can be called multiple times, if the topic already exists it will just return nil.
