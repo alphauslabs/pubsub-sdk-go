@@ -428,7 +428,7 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 
 	bo := gaxv2.Backoff{
 		Initial: 5 * time.Second,
-		Max:     1 * time.Minute,
+		Max:     25 * time.Second,
 	}
 
 	var err error
