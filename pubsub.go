@@ -375,7 +375,7 @@ func (pbclient *PubSubClient) Subscribe(ctx context.Context, in *SubscribeReques
 	var address string
 	bo := gaxv2.Backoff{
 		Initial: 5 * time.Second,
-		Max:     1 * time.Minute,
+		Max:     20 * time.Second,
 	}
 
 	for {
@@ -428,7 +428,7 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 
 	bo := gaxv2.Backoff{
 		Initial: 5 * time.Second,
-		Max:     25 * time.Second,
+		Max:     20 * time.Second,
 	}
 
 	var err error
@@ -457,7 +457,7 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 		if st, ok := status.FromError(err); ok {
 			if st.Code() == codes.Unavailable {
 				address = ""
-				p.logger.Printf("Error: %v, retrying in %v", err, bo.Pause())
+				p.logger.Printf("Error: %v, retrying in %v, id=%v, sub=%v", err, bo.Pause(), id, subscription)
 				time.Sleep(bo.Pause())
 				continue
 			}
