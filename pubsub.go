@@ -464,6 +464,7 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 		}
 
 		if strings.Contains(err.Error(), "wrongnode") {
+			p.logger.Printf("Wrong node: %v", err)
 			address = strings.Split(err.Error(), "|")[1]
 			continue
 		}
