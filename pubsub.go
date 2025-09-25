@@ -431,8 +431,10 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 		Max:     20 * time.Second,
 	}
 
+	limit := 30
+	i := 0
 	var err error
-	for range 30 {
+	for range limit {
 		pbclient, err = p.getClient(address)
 		if err != nil {
 			return fmt.Errorf("failed to create connection: %w", err)
@@ -452,12 +454,12 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 		if err == nil {
 			return nil
 		}
-
+		i++
 		// Handle errors and retry logic
 		if st, ok := status.FromError(err); ok {
 			if st.Code() == codes.Unavailable {
 				address = ""
-				p.logger.Printf("Error: %v, retrying in %v, id=%v, sub=%v", err, bo.Pause(), id, subscription)
+				p.logger.Printf("Error: %v, retrying in %v, id=%v, sub=%v, retry=%v", err, bo.Pause(), id, subscription, i)
 				time.Sleep(bo.Pause())
 				continue
 			}
