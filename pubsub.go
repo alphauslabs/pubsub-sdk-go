@@ -505,6 +505,38 @@ func (p *PubSubClient) CreateTopic(ctx context.Context, name string) error {
 	return nil
 }
 
+// Lists all topics
+func (p *PubSubClient) ListTopics(ctx context.Context) ([]string, error) {
+	res, err := (*p.clientconn).ListTopics(ctx, &pb.ListTopicsRequest{})
+	if err != nil {
+		p.logger.Printf("ListTopics error: %v", err)
+		return nil, err
+	}
+
+	var topics []string
+	for _, t := range res.Topics {
+		topics = append(topics, t.Name)
+	}
+
+	return topics, nil
+}
+
+// Lists all subscriptions in topic/subscription format
+func (p *PubSubClient) ListSubscriptions(ctx context.Context) ([]string, error) {
+	res, err := (*p.clientconn).ListSubscriptions(ctx, &pb.ListSubscriptionsRequest{})
+	if err != nil {
+		p.logger.Printf("ListTopics error: %v", err)
+		return nil, err
+	}
+
+	var subscriptions []string
+	for _, s := range res.Subscriptions {
+		subscriptions = append(subscriptions, fmt.Sprintf("%s/%s", s.Topic, s.Name))
+	}
+
+	return subscriptions, nil
+}
+
 // Creates a new subscription with the given name and topic, optionally they can set NoAutoExtend to true, but this is not recommended.
 // Since PubSub defaults all subscriptions to auto extend.
 // This function can be called multiple times, if the subscription already exists it will just return nil.
