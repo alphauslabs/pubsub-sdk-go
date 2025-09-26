@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
@@ -58,7 +59,17 @@ func New(options ...Option) (*PubSubClient, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	kacp := keepalive.ClientParameters{
+		Time:                15 * time.Second, // send ping every 15s when idle
+		Timeout:             10 * time.Second, // wait 10s for server pong
+		PermitWithoutStream: true,             // keep connection alive even if idle
+	}
+
 	var opts []grpc.DialOption
+	opts = append(opts,
+		grpc.WithKeepaliveParams(kacp),
+	)
 	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	opts = append(opts, grpc.WithBlock())
 	opts = append(opts, grpc.WithUnaryInterceptor(func(ctx context.Context,
@@ -668,6 +679,14 @@ func (p *PubSubClient) getClient(addr string) (*PubSubClient, error) {
 	}
 
 	var opts []grpc.DialOption
+	kacp := keepalive.ClientParameters{
+		Time:                15 * time.Second, // send ping every 15s when idle
+		Timeout:             10 * time.Second, // wait 10s for server pong
+		PermitWithoutStream: true,             // keep connection alive even if idle
+	}
+	opts = append(opts,
+		grpc.WithKeepaliveParams(kacp),
+	)
 	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	opts = append(opts, grpc.WithBlock())
 	opts = append(opts, grpc.WithUnaryInterceptor(func(ctx context.Context,
