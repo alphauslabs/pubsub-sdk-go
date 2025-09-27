@@ -761,7 +761,10 @@ func (p *PubSubClient) PurgeTopic(ctx context.Context, topic string) (int, error
 		c, err := (*pbclient.clientconn).PurgeTopic(ctx, &pb.PurgeTopicRequest{
 			Topic: topic,
 		})
-		return int(c.NumMessagesPurged), err
+		if err != nil {
+			return 0, err
+		}
+		return int(c.NumMessagesPurged), nil
 	}
 
 	backoff := gaxv2.Backoff{
