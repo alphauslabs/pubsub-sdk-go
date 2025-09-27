@@ -687,17 +687,17 @@ func (p *PubSubClient) RequeueMessage(ctx context.Context, msgId, subscription, 
 	return nil
 }
 
-// Deletes all messages in a topic.
-func (p *PubSubClient) PurgeTopic(ctx context.Context, topic string) error {
-	do := func(addr string) error {
+// Deletes all messages in a topic, returns number of messages purged and error if any.
+func (p *PubSubClient) PurgeTopic(ctx context.Context, topic string) (int, error) {
+	do := func(addr string) (int, error) {
 		pbclient, err := p.getClient(addr)
 		if err != nil {
-			return err
+			return 0, err
 		}
-		_, err = (*pbclient.clientconn).PurgeTopic(ctx, &pb.PurgeTopicRequest{
+		c, err := (*pbclient.clientconn).PurgeTopic(ctx, &pb.PurgeTopicRequest{
 			Topic: topic,
 		})
-		return err
+		return int(c.NumMessagesPurged), err
 	}
 
 	backoff := gaxv2.Backoff{
@@ -705,8 +705,10 @@ func (p *PubSubClient) PurgeTopic(ctx context.Context, topic string) error {
 		Max:     1 * time.Minute,
 	}
 	var address string
+	var count int
 	for {
-		err := do(address)
+		c, err := do(address)
+		count = c
 		if err == nil {
 			break
 		}
@@ -727,10 +729,10 @@ func (p *PubSubClient) PurgeTopic(ctx context.Context, topic string) error {
 			p.logger.Printf("Error: %v retrying..", err)
 			continue
 		}
-		return err
+		return 0, err
 	}
 
-	return nil
+	return count, nil
 }
 
 func (p *PubSubClient) getClient(addr string) (*PubSubClient, error) {
