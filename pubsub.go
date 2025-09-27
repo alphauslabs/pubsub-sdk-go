@@ -109,6 +109,70 @@ func New(options ...Option) (*PubSubClient, error) {
 	return client, nil
 }
 
+func (p *PubSubClient) getClient(addr string) (*PubSubClient, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.conns == nil {
+		p.conns = make(map[string]*grpc.ClientConn)
+	}
+
+	if addr == "" {
+		addr = "35.213.109.125:50051" // default
+	}
+
+	if c, ok := p.conns[addr]; ok { // no need to dial again
+		clientconn := pb.NewPubSubServiceClient(c)
+		p.clientconn = &clientconn
+		return p, nil
+	}
+
+	token, err := idtoken.NewTokenSource(context.Background(), addr)
+	if err != nil {
+		return nil, err
+	}
+
+	var opts []grpc.DialOption
+	kacp := keepalive.ClientParameters{
+		Time:                15 * time.Second, // send ping every 15s when idle
+		Timeout:             10 * time.Second, // wait 10s for server pong
+		PermitWithoutStream: true,             // keep connection alive even if idle
+	}
+	opts = append(opts,
+		grpc.WithKeepaliveParams(kacp),
+	)
+	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	opts = append(opts, grpc.WithBlock())
+	opts = append(opts, grpc.WithUnaryInterceptor(func(ctx context.Context,
+		method string, req, reply interface{}, cc *grpc.ClientConn,
+		invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		tk, err := token.Token()
+		if err == nil {
+			ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
+		}
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}))
+
+	opts = append(opts, grpc.WithStreamInterceptor(func(ctx context.Context,
+		desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer,
+		opts ...grpc.CallOption) (grpc.ClientStream, error) {
+		tk, err := token.Token()
+		if err == nil {
+			ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
+		}
+		return streamer(ctx, desc, cc, method, opts...)
+	}))
+	conn, err := grpc.NewClient(addr, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	p.conns[addr] = conn
+	clientconn := pb.NewPubSubServiceClient(conn)
+	p.clientconn = &clientconn
+	return p, nil
+}
+
 // Publish a message to a given topic, with retry mechanism.
 func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 	req := &pb.PublishRequest{
@@ -733,68 +797,4 @@ func (p *PubSubClient) PurgeTopic(ctx context.Context, topic string) (int, error
 	}
 
 	return count, nil
-}
-
-func (p *PubSubClient) getClient(addr string) (*PubSubClient, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if p.conns == nil {
-		p.conns = make(map[string]*grpc.ClientConn)
-	}
-
-	if addr == "" {
-		addr = "35.213.109.125:50051" // default
-	}
-
-	if c, ok := p.conns[addr]; ok { // no need to dial again
-		clientconn := pb.NewPubSubServiceClient(c)
-		p.clientconn = &clientconn
-		return p, nil
-	}
-
-	token, err := idtoken.NewTokenSource(context.Background(), addr)
-	if err != nil {
-		return nil, err
-	}
-
-	var opts []grpc.DialOption
-	kacp := keepalive.ClientParameters{
-		Time:                15 * time.Second, // send ping every 15s when idle
-		Timeout:             10 * time.Second, // wait 10s for server pong
-		PermitWithoutStream: true,             // keep connection alive even if idle
-	}
-	opts = append(opts,
-		grpc.WithKeepaliveParams(kacp),
-	)
-	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	opts = append(opts, grpc.WithBlock())
-	opts = append(opts, grpc.WithUnaryInterceptor(func(ctx context.Context,
-		method string, req, reply interface{}, cc *grpc.ClientConn,
-		invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-		tk, err := token.Token()
-		if err == nil {
-			ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
-		}
-		return invoker(ctx, method, req, reply, cc, opts...)
-	}))
-
-	opts = append(opts, grpc.WithStreamInterceptor(func(ctx context.Context,
-		desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer,
-		opts ...grpc.CallOption) (grpc.ClientStream, error) {
-		tk, err := token.Token()
-		if err == nil {
-			ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tk.AccessToken)
-		}
-		return streamer(ctx, desc, cc, method, opts...)
-	}))
-	conn, err := grpc.NewClient(addr, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	p.conns[addr] = conn
-	clientconn := pb.NewPubSubServiceClient(conn)
-	p.clientconn = &clientconn
-	return p, nil
 }
