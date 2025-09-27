@@ -3,9 +3,8 @@ module github.com/alphauslabs/pubsub-sdk-go
 go 1.23.6
 
 require (
-	github.com/alphauslabs/pubsub-proto v0.2.4
+	github.com/alphauslabs/pubsub-proto v0.2.6
 	github.com/dchest/uniuri v1.2.0
-	github.com/golang/glog v1.2.4
 	github.com/googleapis/gax-go/v2 v2.14.1
 	google.golang.org/api v0.229.0
 	google.golang.org/grpc v1.71.1

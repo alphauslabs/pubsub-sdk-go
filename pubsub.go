@@ -687,6 +687,52 @@ func (p *PubSubClient) RequeueMessage(ctx context.Context, msgId, subscription, 
 	return nil
 }
 
+// Deletes all messages in a topic.
+func (p *PubSubClient) PurgeTopic(ctx context.Context, topic string) error {
+	do := func(addr string) error {
+		pbclient, err := p.getClient(addr)
+		if err != nil {
+			return err
+		}
+		_, err = (*pbclient.clientconn).PurgeTopic(ctx, &pb.PurgeTopicRequest{
+			Topic: topic,
+		})
+		return err
+	}
+
+	backoff := gaxv2.Backoff{
+		Initial: 5 * time.Second,
+		Max:     1 * time.Minute,
+	}
+	var address string
+	for {
+		err := do(address)
+		if err == nil {
+			break
+		}
+
+		if st, ok := status.FromError(err); ok {
+			if st.Code() == codes.Unavailable {
+				address = ""
+				btime := backoff.Pause() // backoff time
+				p.logger.Printf("Error: %v, retrying in %v", err, btime)
+				time.Sleep(btime)
+				continue
+			}
+		}
+
+		if strings.Contains(strings.ToLower(err.Error()), "wrongnode") {
+			correctNode := strings.Split(err.Error(), "|")[1]
+			address = correctNode
+			p.logger.Printf("Error: %v retrying..", err)
+			continue
+		}
+		return err
+	}
+
+	return nil
+}
+
 func (p *PubSubClient) getClient(addr string) (*PubSubClient, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
