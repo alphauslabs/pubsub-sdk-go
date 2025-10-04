@@ -303,6 +303,8 @@ func (p *PubSubClient) Start(quit context.Context, in *SubscribeAndAckRequest, d
 							err = pbclient.RequeueMessage(ctx, msg.Id, in.Subscription, in.Topic)
 							if err != nil {
 								pbclient.logger.Printf("RequeueMessage failed: %v", err)
+							} else {
+								pbclient.logger.Printf("Requeued message %s", msg.Id)
 							}
 						}
 					} else {
@@ -345,7 +347,7 @@ func (p *PubSubClient) Start(quit context.Context, in *SubscribeAndAckRequest, d
 				err = in.Callback(in.Ctx, []byte(msg.Payload)) // This could take some time depending on the callback.
 				if err != nil {
 					if r, ok := err.(Requeuer); ok {
-						if r.ShouldRequeue() {
+						if r.ShouldRequeue() { // Let our timeout expire naturally, since we are not auto extending.
 							pbclient.logger.Printf("Requeueing message=%v", msg.Id)
 							ack = false
 						}
@@ -370,7 +372,7 @@ func (p *PubSubClient) Start(quit context.Context, in *SubscribeAndAckRequest, d
 
 	bo := gaxv2.Backoff{
 		Initial: 5 * time.Second,
-		Max:     1 * time.Minute,
+		Max:     20 * time.Second,
 	}
 	var address string
 	// Loop for retry
@@ -720,7 +722,7 @@ func (p *PubSubClient) RequeueMessage(ctx context.Context, msgId, subscription, 
 
 	backoff := gaxv2.Backoff{
 		Initial: 5 * time.Second,
-		Max:     1 * time.Minute,
+		Max:     20 * time.Second,
 	}
 	var address string
 	for {
