@@ -380,11 +380,12 @@ func (p *PubSubClient) Start(quit context.Context, in *SubscribeAndAckRequest, d
 		err := do(address)
 		if err != nil {
 			st, ok := status.FromError(err)
+			sleep := bo.Pause()
 			if ok {
 				if st.Code() == codes.Unavailable {
 					address = ""
-					p.logger.Printf("Error: %v, retrying in %v", err, bo.Pause())
-					time.Sleep(bo.Pause())
+					p.logger.Printf("Error: %v, retrying in %v", err, sleep)
+					time.Sleep(sleep)
 					continue
 				}
 
@@ -395,13 +396,13 @@ func (p *PubSubClient) Start(quit context.Context, in *SubscribeAndAckRequest, d
 			if strings.Contains(err.Error(), "wrongnode") {
 				node := strings.Split(err.Error(), "|")[1]
 				address = node
-				p.logger.Printf("Stream ended with wrongnode err=%v, retrying in %v", err.Error(), bo.Pause())
+				p.logger.Printf("Stream ended with wrongnode err=%v", err.Error())
 				continue // retry immediately
 			}
 			if err == io.EOF {
 				address = ""
-				p.logger.Printf("Stream ended with EOF err=%v, retrying in %v", err.Error(), bo.Pause())
-				time.Sleep(bo.Pause())
+				p.logger.Printf("Stream ended with EOF err=%v, retrying in %v", err.Error(), sleep)
+				time.Sleep(sleep)
 				continue
 			}
 			return err
@@ -459,24 +460,25 @@ func (pbclient *PubSubClient) Subscribe(ctx context.Context, in *SubscribeReques
 		err := do(address)
 		if err != nil {
 			st, ok := status.FromError(err)
+			sleep := bo.Pause()
 			if ok {
 				if st.Code() == codes.Unavailable {
 					address = ""
-					pbclient.logger.Printf("Error: %v, retrying in %v", err, bo.Pause())
-					time.Sleep(bo.Pause())
+					pbclient.logger.Printf("Error: %v, retrying in %v", err, sleep)
+					time.Sleep(sleep)
 					continue
 				}
 			}
 			if strings.Contains(err.Error(), "wrongnode") {
 				node := strings.Split(err.Error(), "|")[1]
 				address = node
-				pbclient.logger.Printf("Stream ended with wrongnode err=%v, retrying in %v", err, bo.Pause())
+				pbclient.logger.Printf("Stream ended with wrongnode err=%v, retrying in %v", err, sleep)
 				continue // retry immediately
 			}
 			if err == io.EOF {
 				address = ""
-				pbclient.logger.Printf("Stream ended with EOF err=%v, retrying in %v", err, bo.Pause())
-				time.Sleep(bo.Pause())
+				pbclient.logger.Printf("Stream ended with EOF err=%v, retrying in %v", err, sleep)
+				time.Sleep(sleep)
 				continue
 			}
 			in.Errch <- err
@@ -535,9 +537,10 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 		// Handle errors and retry logic
 		if st, ok := status.FromError(err); ok {
 			if st.Code() == codes.Unavailable {
+				sleep := bo.Pause()
 				address = ""
-				p.logger.Printf("Error: %v, retrying in %v, id=%v, sub=%v, retry=%v", err, bo.Pause(), id, subscription, i)
-				time.Sleep(bo.Pause())
+				p.logger.Printf("Error: %v, retrying in %v, id=%v, sub=%v, retry=%v", err, sleep, id, subscription, i)
+				time.Sleep(sleep)
 				continue
 			}
 		}
