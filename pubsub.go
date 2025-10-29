@@ -538,6 +538,7 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 		if st, ok := status.FromError(err); ok {
 			if st.Code() == codes.Unavailable {
 				sleep := bo.Pause()
+				address = ""
 				p.logger.Printf("Error: %v, retrying in %v, id=%v, sub=%v, retry=%v", err, sleep, id, subscription, i)
 				time.Sleep(sleep)
 				continue
