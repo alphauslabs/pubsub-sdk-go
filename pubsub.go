@@ -127,6 +127,7 @@ func (p *PubSubClient) getClient(addr string) (*PubSubClient, error) {
 		return p, nil
 	}
 
+	// Dial for new connection
 	token, err := idtoken.NewTokenSource(context.Background(), addr)
 	if err != nil {
 		return nil, err
@@ -503,8 +504,7 @@ func (p *PubSubClient) SendAck(ctx context.Context, id, subscription, topic stri
 // Sends Acknowledgement for a given message, with retry mechanism.
 func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, topic string) error {
 	pbclient := p
-	var address string
-
+	address := p.lastAddrUsed
 	bo := gaxv2.Backoff{
 		Initial: 1 * time.Second,
 		Max:     9 * time.Second,
@@ -546,7 +546,7 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 		}
 
 		if strings.Contains(err.Error(), "wrongnode") {
-			p.logger.Printf("Wrong node: %v", err)
+			p.logger.Printf("Wrong node: %v, id: %v, sub: %v ", err, id, subscription)
 			address = strings.Split(err.Error(), "|")[1]
 			continue
 		}
@@ -554,6 +554,7 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 		return err
 	}
 
+	p.lastAddrUsed = address
 	return err
 }
 

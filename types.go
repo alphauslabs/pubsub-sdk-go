@@ -9,10 +9,11 @@ import (
 )
 
 type PubSubClient struct {
-	conns      map[string]*grpc.ClientConn
-	clientconn *pb.PubSubServiceClient
-	logger     *log.Logger
-	mu         sync.Mutex
+	conns        map[string]*grpc.ClientConn
+	clientconn   *pb.PubSubServiceClient
+	logger       *log.Logger
+	mu           sync.Mutex
+	lastAddrUsed string
 }
 
 type PublishRequest struct {
