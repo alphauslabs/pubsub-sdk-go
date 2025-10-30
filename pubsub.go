@@ -61,9 +61,9 @@ func New(options ...Option) (*PubSubClient, error) {
 	}
 
 	kacp := keepalive.ClientParameters{
-		Time:                15 * time.Second, // send ping every 15s when idle
-		Timeout:             10 * time.Second, // wait 10s for server pong
-		PermitWithoutStream: true,             // keep connection alive even if idle
+		Time:                5 * time.Second, // send ping every 15s when idle
+		Timeout:             5 * time.Second, // wait 10s for server pong
+		PermitWithoutStream: true,            // keep connection alive even if idle
 	}
 
 	var opts []grpc.DialOption
