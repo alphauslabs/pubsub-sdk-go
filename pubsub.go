@@ -71,7 +71,6 @@ func New(options ...Option) (*PubSubClient, error) {
 		grpc.WithKeepaliveParams(kacp),
 	)
 	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	opts = append(opts, grpc.WithBlock())
 	opts = append(opts, grpc.WithUnaryInterceptor(func(ctx context.Context,
 		method string, req, reply interface{}, cc *grpc.ClientConn,
 		invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
@@ -81,6 +80,8 @@ func New(options ...Option) (*PubSubClient, error) {
 		}
 		return invoker(ctx, method, req, reply, cc, opts...)
 	}))
+
+	opts = append(opts, grpc.WithDefaultCallOptions(grpc.WaitForReady(true)))
 
 	opts = append(opts, grpc.WithStreamInterceptor(func(ctx context.Context,
 		desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer,
@@ -142,6 +143,7 @@ func (p *PubSubClient) getClient(addr string) (*PubSubClient, error) {
 	opts = append(opts,
 		grpc.WithKeepaliveParams(kacp),
 	)
+
 	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	opts = append(opts, grpc.WithUnaryInterceptor(func(ctx context.Context,
 		method string, req, reply interface{}, cc *grpc.ClientConn,
@@ -162,6 +164,8 @@ func (p *PubSubClient) getClient(addr string) (*PubSubClient, error) {
 		}
 		return streamer(ctx, desc, cc, method, opts...)
 	}))
+
+	opts = append(opts, grpc.WithDefaultCallOptions(grpc.WaitForReady(true)))
 	conn, err := grpc.NewClient(addr, opts...)
 	if err != nil {
 		return nil, err
