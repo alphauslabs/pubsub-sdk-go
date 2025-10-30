@@ -81,8 +81,6 @@ func New(options ...Option) (*PubSubClient, error) {
 		return invoker(ctx, method, req, reply, cc, opts...)
 	}))
 
-	opts = append(opts, grpc.WithDefaultCallOptions(grpc.WaitForReady(true)))
-
 	opts = append(opts, grpc.WithStreamInterceptor(func(ctx context.Context,
 		desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer,
 		opts ...grpc.CallOption) (grpc.ClientStream, error) {
@@ -165,7 +163,6 @@ func (p *PubSubClient) getClient(addr string) (*PubSubClient, error) {
 		return streamer(ctx, desc, cc, method, opts...)
 	}))
 
-	opts = append(opts, grpc.WithDefaultCallOptions(grpc.WaitForReady(true)))
 	conn, err := grpc.NewClient(addr, opts...)
 	if err != nil {
 		return nil, err
