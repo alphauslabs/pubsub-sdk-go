@@ -143,7 +143,6 @@ func (p *PubSubClient) getClient(addr string) (*PubSubClient, error) {
 		grpc.WithKeepaliveParams(kacp),
 	)
 	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	opts = append(opts, grpc.WithBlock())
 	opts = append(opts, grpc.WithUnaryInterceptor(func(ctx context.Context,
 		method string, req, reply interface{}, cc *grpc.ClientConn,
 		invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
