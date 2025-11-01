@@ -510,7 +510,7 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 		Max:     9 * time.Second,
 	}
 
-	limit := 30
+	limit := 50
 	i := 0
 	var err error
 	for range limit {
