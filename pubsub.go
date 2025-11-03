@@ -16,6 +16,7 @@ import (
 	"google.golang.org/api/idtoken"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
@@ -121,9 +122,13 @@ func (p *PubSubClient) getClient(addr string) (*PubSubClient, error) {
 	}
 
 	if c, ok := p.conns[addr]; ok { // no need to dial again
-		clientconn := pb.NewPubSubServiceClient(c)
-		p.clientconn = &clientconn
-		return p, nil
+		if c.GetState() != connectivity.Ready {
+			delete(p.conns, addr)
+		} else { // Ready, reuse existing connection
+			clientconn := pb.NewPubSubServiceClient(c)
+			p.clientconn = &clientconn
+			return p, nil
+		}
 	}
 
 	// Dial for new connection
