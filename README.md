@@ -1,13 +1,11 @@
 
-Go SDK for interacting with internal PubSub service.
+Go SDK for interacting with the internal PubSub service.
 
-## Installation
+### Usage
 
 ```bash
 $ go get github.com/alphauslabs/pubsub-sdk-go@latest
 ```
-
-### Initialize a client
 
 ```go
 import "github.com/alphauslabs/pubsub-sdk-go"
