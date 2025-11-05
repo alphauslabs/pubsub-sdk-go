@@ -612,14 +612,14 @@ func (p *PubSubClient) ListSubscriptions(ctx context.Context) ([]string, error) 
 	return subscriptions, nil
 }
 
-// Creates a new subscription with the given name and topic, optionally they can set NoAutoExtend to true, but this is not recommended.
+// Creates a new subscription with the given name and topic, optionally they can set AutoExtend to true, but this is not recommended.
 // Since PubSub defaults all subscriptions to auto extend.
 // This function can be called multiple times, if the subscription already exists it will just return nil.
 func (p *PubSubClient) CreateSubscription(ctx context.Context, in *CreateSubscriptionRequest) error {
 	req := &pb.CreateSubscriptionRequest{
-		Topic:        in.Topic,
-		Name:         in.Name,
-		NoAutoExtend: in.NoAutoExtend,
+		Topic:      in.Topic,
+		Name:       in.Name,
+		AutoExtend: in.AutoExtend,
 	}
 
 	_, err := (*p.clientconn).CreateSubscription(ctx, req)
@@ -664,7 +664,7 @@ func (p *PubSubClient) GetNumberOfMessages(ctx context.Context, filter ...string
 }
 
 // Extends the timeout for a given message, this is useful when the subscriber needs more time to process the message.
-// The message will be automatically extended if the subscription is created with NoAutoExtend set to false.
+// The message will be automatically extended if the subscription is created with AutoExtend set to true.
 func (p *PubSubClient) ExtendMessageTimeout(ctx context.Context, msgId, subscription, topic string) error {
 	do := func(addr string) error {
 		pbclient, err := p.getClient(addr)
