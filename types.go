@@ -58,6 +58,17 @@ type GetNumberOfMessagesResponse struct {
 	CurrentMessagesAvailable int32
 }
 
+type SubscriptionInfo struct {
+	Name         string
+	Topic        string
+	IsAutoExtend bool
+}
+
+type TopicInfo struct {
+	Name          string
+	Subscriptions []string
+}
+
 type Requeuer interface {
 	ShouldRequeue() bool
 }

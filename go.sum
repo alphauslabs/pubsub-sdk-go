@@ -4,8 +4,8 @@ cloud.google.com/go/auth/oauth2adapt v0.2.8 h1:keo8NaayQZ6wimpNSmW5OPc283g65QNIi
 cloud.google.com/go/auth/oauth2adapt v0.2.8/go.mod h1:XQ9y31RkqZCcwJWNSx2Xvric3RrU88hAYYbjDWYDL+c=
 cloud.google.com/go/compute/metadata v0.6.0 h1:A6hENjEsCDtC1k8byVsgwvVcioamEHvZ4j01OwKxG9I=
 cloud.google.com/go/compute/metadata v0.6.0/go.mod h1:FjyFAW1MW0C203CEOMDTu3Dk1FlqW3Rga40jzHL4hfg=
-github.com/alphauslabs/pubsub-proto v0.2.8 h1:ILPyTqUnL4Ilu272saY0e+o0R1xIVKK6CJn/BKTkJ50=
-github.com/alphauslabs/pubsub-proto v0.2.8/go.mod h1:sfDRyxsVmiZtG22g8DUGajSp4qOxCkDrwl655xHNDPg=
+github.com/alphauslabs/pubsub-proto v0.2.10 h1:IbHK7Godfu7iBtD8qWGNp1NhI70ZQhLjCCNDJ2XEOng=
+github.com/alphauslabs/pubsub-proto v0.2.10/go.mod h1:sfDRyxsVmiZtG22g8DUGajSp4qOxCkDrwl655xHNDPg=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dchest/uniuri v1.2.0 h1:koIcOUdrTIivZgSLhHQvKgqdWZq5d7KdMEWF1Ud6+5g=

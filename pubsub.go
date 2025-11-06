@@ -812,3 +812,30 @@ func (p *PubSubClient) PurgeTopic(ctx context.Context, topic string) (int, error
 
 	return count, nil
 }
+
+func (p *PubSubClient) GetSubscriptionInfo(ctx context.Context, subscription string) (*SubscriptionInfo, error) {
+	res, err := (*p.clientconn).GetSubscription(ctx, &pb.GetSubscriptionRequest{
+		Name: subscription,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &SubscriptionInfo{
+		Name:         res.Subscription.Name,
+		Topic:        res.Subscription.Topic,
+		IsAutoExtend: res.Subscription.AutoExtend,
+	}, nil
+}
+
+func (p *PubSubClient) GetTopicInfo(ctx context.Context, topic string) (*TopicInfo, error) {
+	res, err := (*p.clientconn).GetTopic(ctx, &pb.GetTopicRequest{
+		Name: topic,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &TopicInfo{
+		Name:          res.Topic.Name,
+		Subscriptions: res.Topic.Subscriptions,
+	}, nil
+}
