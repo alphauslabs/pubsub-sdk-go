@@ -544,14 +544,14 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 			if st.Code() == codes.Unavailable {
 				sleep := bo.Pause()
 				address = ""
-				p.logger.Printf("Error: %v, retrying in %v, id=%v, sub=%v, retry=%v", err, sleep, id, subscription, i)
+				p.logger.Printf("[Ack] Error: %v, retrying in %v, id=%v, sub=%v, retry=%v", err, sleep, id, subscription, i)
 				time.Sleep(sleep)
 				continue
 			}
 		}
 
 		if strings.Contains(err.Error(), "wrongnode") {
-			p.logger.Printf("Wrong node: %v, id: %v, sub: %v ", err, id, subscription)
+			p.logger.Printf("[Ack] WrongNode Error: %v, id: %v, sub: %v ", err, id, subscription)
 			address = strings.Split(err.Error(), "|")[1]
 			continue
 		}
@@ -681,7 +681,7 @@ func (p *PubSubClient) ExtendMessageTimeout(ctx context.Context, msgId, subscrip
 
 	backoff := gaxv2.Backoff{
 		Initial: 5 * time.Second,
-		Max:     1 * time.Minute,
+		Max:     20 * time.Minute,
 	}
 
 	var address string
@@ -695,7 +695,7 @@ func (p *PubSubClient) ExtendMessageTimeout(ctx context.Context, msgId, subscrip
 			if st.Code() == codes.Unavailable {
 				address = ""
 				btime := backoff.Pause() // backoff time
-				p.logger.Printf("Error: %v, retrying in %v", err, btime)
+				p.logger.Printf("[Extend] Error: %v, retrying in %v", err, btime)
 				time.Sleep(btime)
 				continue
 			}
@@ -704,7 +704,7 @@ func (p *PubSubClient) ExtendMessageTimeout(ctx context.Context, msgId, subscrip
 		if strings.Contains(strings.ToLower(err.Error()), "wrongnode") {
 			correctNode := strings.Split(err.Error(), "|")[1]
 			address = correctNode
-			p.logger.Printf("Error: %v retrying..", err)
+			p.logger.Printf("[Extend] WrongNode Error: %v retrying..", err)
 			continue
 		}
 
@@ -731,7 +731,7 @@ func (p *PubSubClient) RequeueMessage(ctx context.Context, msgId, subscription, 
 
 	backoff := gaxv2.Backoff{
 		Initial: 5 * time.Second,
-		Max:     20 * time.Second,
+		Max:     10 * time.Second,
 	}
 	var address string
 	for {
