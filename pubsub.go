@@ -396,6 +396,7 @@ func (p *PubSubClient) Start(quit context.Context, in *SubscribeAndAckRequest, d
 				}
 
 				if st.Code() == codes.Canceled {
+					p.logger.Printf("Start cancelled, exiting")
 					break
 				}
 			}
@@ -411,8 +412,10 @@ func (p *PubSubClient) Start(quit context.Context, in *SubscribeAndAckRequest, d
 				time.Sleep(sleep)
 				continue
 			}
+			p.logger.Printf("Start error: %v", err)
 			return err
 		}
+		p.logger.Printf("Start exited normally")
 		break
 	}
 
