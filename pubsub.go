@@ -254,12 +254,13 @@ func (p *PubSubClient) Start(quit context.Context, in *SubscribeAndAckRequest, d
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	localId := uniuri.NewLen(10)
 	go func() {
 		<-quit.Done()
+		p.logger.Printf("Id=%v quit signal received, exiting", localId)
 		cancel()
 	}()
 
-	localId := uniuri.NewLen(10)
 	p.logger.Printf("Started=%v, time=%v", localId, time.Now().Format(time.RFC3339))
 	defer func(start time.Time) {
 		p.logger.Printf("Stopped=%v, duration=%v", localId, time.Since(start))
@@ -284,16 +285,19 @@ func (p *PubSubClient) Start(quit context.Context, in *SubscribeAndAckRequest, d
 	do := func(addr string) error {
 		pbclient, err := p.getClient(addr)
 		if err != nil {
+			p.logger.Printf("Id=%v GetClient error: %v", localId, err)
 			return err
 		}
 		stream, err := (*pbclient.clientconn).Subscribe(ctx, req)
 		if err != nil {
+			p.logger.Printf("Id=%v Subscribe error: %v", localId, err)
 			return err
 		}
 		// Loop for receiving messages
 		for {
 			msg, err := stream.Recv()
 			if err != nil {
+				p.logger.Printf("Id=%v Recv error: %v", localId, err)
 				return err
 			}
 			switch {
