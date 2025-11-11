@@ -27,15 +27,13 @@ type PublishRequest struct {
 
 type MessageCallback func(ctx any, data []byte) error
 
-type SubscribeAndAckRequest struct {
-	Topic        string
+type StartRequest struct {
 	Subscription string
 	Ctx          any // arbitrary data passed to callback
 	Callback     MessageCallback
 }
 
 type SubscribeRequest struct {
-	Topic        string
 	Subscription string
 	Errch        chan error
 	Outch        chan []byte

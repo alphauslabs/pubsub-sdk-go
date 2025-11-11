@@ -238,13 +238,9 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 
 // Subscribes and Acknowledge the message after processing through the provided callback.
 // Cancelled by ctx, and will send empty struct to done if provided.
-func (p *PubSubClient) Start(quit context.Context, in *SubscribeAndAckRequest, done ...chan struct{}) error {
+func (p *PubSubClient) Start(quit context.Context, in *StartRequest, done ...chan struct{}) error {
 	if in.Callback == nil {
 		return fmt.Errorf("callback sould not be nil")
-	}
-
-	if in.Topic == "" {
-		return fmt.Errorf("topic should not be empty")
 	}
 
 	if in.Subscription == "" {
@@ -278,7 +274,6 @@ func (p *PubSubClient) Start(quit context.Context, in *SubscribeAndAckRequest, d
 
 	autoExtend := r.Subscription.AutoExtend
 	req := &pb.SubscribeRequest{
-		Topic:        in.Topic,
 		Subscription: in.Subscription,
 	}
 
@@ -310,7 +305,7 @@ func (p *PubSubClient) Start(quit context.Context, in *SubscribeAndAckRequest, d
 							pbclient.logger.Printf("Requeueing message=%v", msg.Id)
 							ack = false
 							// Explicitly requeue the message, since this subscription is set to autoextend.
-							err = pbclient.RequeueMessage(ctx, msg.Id, in.Subscription, in.Topic)
+							err = pbclient.RequeueMessage(ctx, msg.Id, in.Subscription)
 							if err != nil {
 								pbclient.logger.Printf("RequeueMessage failed: %v", err)
 							} else {
@@ -322,7 +317,7 @@ func (p *PubSubClient) Start(quit context.Context, in *SubscribeAndAckRequest, d
 					}
 				}
 				if ack {
-					err = pbclient.SendAckWithRetry(ctx, msg.Id, in.Subscription, in.Topic)
+					err = pbclient.SendAckWithRetry(ctx, msg.Id, in.Subscription)
 					if err != nil {
 						pbclient.logger.Printf("Ack error: %v", err)
 					} else {
@@ -344,7 +339,7 @@ func (p *PubSubClient) Start(quit context.Context, in *SubscribeAndAckRequest, d
 							return
 						case <-t.C:
 							// Reset timeout for this message
-							err := pbclient.ExtendMessageTimeout(ctx, msg.Id, in.Subscription, in.Topic)
+							err := pbclient.ExtendMessageTimeout(ctx, msg.Id, in.Subscription)
 							if err != nil {
 								pbclient.logger.Printf("ExtendVisibilityTimeout failed: %v", err)
 							} else {
@@ -366,7 +361,7 @@ func (p *PubSubClient) Start(quit context.Context, in *SubscribeAndAckRequest, d
 					}
 				}
 				if ack {
-					err = pbclient.SendAckWithRetry(ctx, msg.Id, in.Subscription, in.Topic)
+					err = pbclient.SendAckWithRetry(ctx, msg.Id, in.Subscription)
 					if err != nil {
 						pbclient.logger.Printf("Ack error: %v", err)
 					} else {
@@ -434,7 +429,6 @@ func (pbclient *PubSubClient) Subscribe(ctx context.Context, in *SubscribeReques
 		close(in.Outch)
 	}()
 	req := &pb.SubscribeRequest{
-		Topic:        in.Topic,
 		Subscription: in.Subscription,
 	}
 	do := func(addr string) error {
@@ -504,8 +498,8 @@ func (pbclient *PubSubClient) Subscribe(ctx context.Context, in *SubscribeReques
 }
 
 // Sends Acknowledgement for a given message, subscriber should call this everyime a message is done processing.
-func (p *PubSubClient) SendAck(ctx context.Context, id, subscription, topic string) error {
-	_, err := (*p.clientconn).Acknowledge(ctx, &pb.AcknowledgeRequest{Id: id, Subscription: subscription, Topic: topic})
+func (p *PubSubClient) SendAck(ctx context.Context, id, subscription string) error {
+	_, err := (*p.clientconn).Acknowledge(ctx, &pb.AcknowledgeRequest{Id: id, Subscription: subscription})
 	if err != nil {
 		return err
 	}
@@ -514,7 +508,7 @@ func (p *PubSubClient) SendAck(ctx context.Context, id, subscription, topic stri
 }
 
 // Sends Acknowledgement for a given message, with retry mechanism.
-func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, topic string) error {
+func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription string) error {
 	pbclient := p
 	address := p.lastAddrUsed
 	bo := gaxv2.Backoff{
@@ -539,7 +533,6 @@ func (p *PubSubClient) SendAckWithRetry(ctx context.Context, id, subscription, t
 		_, err = (*pbclient.clientconn).Acknowledge(ctx, &pb.AcknowledgeRequest{
 			Id:           id,
 			Subscription: subscription,
-			Topic:        topic,
 		})
 
 		if err == nil {
@@ -672,7 +665,7 @@ func (p *PubSubClient) GetNumberOfMessages(ctx context.Context, filter ...string
 
 // Extends the timeout for a given message, this is useful when the subscriber needs more time to process the message.
 // The message will be automatically extended if the subscription is created with AutoExtend set to true.
-func (p *PubSubClient) ExtendMessageTimeout(ctx context.Context, msgId, subscription, topic string) error {
+func (p *PubSubClient) ExtendMessageTimeout(ctx context.Context, msgId, subscription string) error {
 	do := func(addr string) error {
 		pbclient, err := p.getClient(addr)
 		if err != nil {
@@ -681,7 +674,6 @@ func (p *PubSubClient) ExtendMessageTimeout(ctx context.Context, msgId, subscrip
 		_, err = (*pbclient.clientconn).ExtendVisibilityTimeout(ctx, &pb.ExtendVisibilityTimeoutRequest{
 			Id:           msgId,
 			Subscription: subscription,
-			Topic:        topic,
 		})
 		return err
 	}
@@ -722,7 +714,7 @@ func (p *PubSubClient) ExtendMessageTimeout(ctx context.Context, msgId, subscrip
 }
 
 // Attempt to requeue a message, with retry mechanism.
-func (p *PubSubClient) RequeueMessage(ctx context.Context, msgId, subscription, topic string) error {
+func (p *PubSubClient) RequeueMessage(ctx context.Context, msgId, subscription string) error {
 	do := func(addr string) error {
 		pbclient, err := p.getClient(addr)
 		if err != nil {
@@ -731,7 +723,6 @@ func (p *PubSubClient) RequeueMessage(ctx context.Context, msgId, subscription, 
 		_, err = (*pbclient.clientconn).RequeueMessage(ctx, &pb.RequeueMessageRequest{
 			Id:           msgId,
 			Subscription: subscription,
-			Topic:        topic,
 		})
 		return err
 	}
