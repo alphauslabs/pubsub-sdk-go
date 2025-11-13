@@ -237,8 +237,8 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 }
 
 // Subscribes and Acknowledge the message after processing through the provided callback.
-// Cancelled by ctx, and will send empty struct to done if provided.
-func (p *PubSubClient) Start(quit context.Context, in *StartRequest, done ...chan struct{}) error {
+// Cancelled by ctx, and will send nil to done if provided.
+func (p *PubSubClient) Start(quit context.Context, in *StartRequest, done ...chan error) error {
 	if in.Callback == nil {
 		return fmt.Errorf("callback sould not be nil")
 	}
@@ -261,7 +261,7 @@ func (p *PubSubClient) Start(quit context.Context, in *StartRequest, done ...cha
 	defer func(start time.Time) {
 		p.logger.Printf("Stopped=%v, duration=%v", localId, time.Since(start))
 		if len(done) > 0 {
-			done[0] <- struct{}{}
+			done[0] <- nil
 		}
 	}(time.Now())
 
