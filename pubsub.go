@@ -618,6 +618,7 @@ func (p *PubSubClient) ListSubscriptions(ctx context.Context) ([]string, error) 
 // Creates a new subscription with the given name and topic, optionally they can set AutoExtend to true, but this is not recommended.
 // Since PubSub defaults all subscriptions to auto extend.
 // This function can be called multiple times, if the subscription already exists it will just return nil.
+// The name should be unique across all topics. Recommended format is topicname_subscriptionname
 func (p *PubSubClient) CreateSubscription(ctx context.Context, in *CreateSubscriptionRequest) error {
 	req := &pb.CreateSubscriptionRequest{
 		Topic:      in.Topic,
