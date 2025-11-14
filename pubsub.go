@@ -205,11 +205,9 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 		Initial: 5 * time.Second,
 		Max:     1 * time.Minute,
 	}
-	limit := in.RetryLimit
-	if limit == 0 {
-		limit = 10
-	}
 
+	limit := 20
+	n := 0
 	for {
 		err := do()
 		if err == nil {
@@ -219,7 +217,6 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 		shouldRetry := false
 		st, ok := status.FromError(err)
 		if ok {
-			c.logger.Printf("Error: %v", st.Code())
 			switch st.Code() {
 			case codes.Unavailable, codes.DeadlineExceeded, codes.ResourceExhausted, codes.Aborted:
 				shouldRetry = true
@@ -230,8 +227,14 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 			return err
 		}
 
+		if limit > 0 && n >= limit {
+			c.logger.Printf("[publish] Error: %v, reached max retries", err)
+			return err
+		}
+
+		n++
 		pauseTime := bo.Pause()
-		c.logger.Printf("Error: %v, retrying in %v", err, pauseTime)
+		c.logger.Printf("[publish] Error: %v, retrying in %v", err, pauseTime)
 		time.Sleep(pauseTime)
 	}
 }

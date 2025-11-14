@@ -20,9 +20,6 @@ type PublishRequest struct {
 	Topic      string
 	Message    string
 	Attributes map[string]string
-
-	// RetryLimit is the max number of times to retry publishing a message. Default is 10.
-	RetryLimit int
 }
 
 type MessageCallback func(ctx any, data []byte) error
