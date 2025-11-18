@@ -684,7 +684,7 @@ func (p *PubSubClient) ExtendMessageTimeout(ctx context.Context, msgId, subscrip
 
 	backoff := gaxv2.Backoff{
 		Initial: 5 * time.Second,
-		Max:     20 * time.Minute,
+		Max:     30 * time.Second,
 	}
 
 	var address string
