@@ -329,7 +329,9 @@ func (p *PubSubClient) Start(quit context.Context, in *StartRequest, done ...cha
 			default: // autoextend for this subscription is set to false, We manually extend it's timeout before timeout ends, We repeat this until the callback returns
 				fdone := make(chan struct{})
 				extender, cancel := context.WithCancel(ctx)
+				defer cancel()
 				t := time.NewTicker(40 * time.Second) //  40s to allow some buffer before default 60s timeout
+				defer t.Stop()
 				go func() {
 					defer func() {
 						close(fdone)
