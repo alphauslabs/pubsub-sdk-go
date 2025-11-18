@@ -283,7 +283,6 @@ func (p *PubSubClient) Start(quit context.Context, in *StartRequest, done ...cha
 	do := func(addr string) error {
 		pbclient, err := p.getClient(addr)
 		if err != nil {
-			p.logger.Printf("Id=%v GetClient error: %v", localId, err)
 			return err
 		}
 		stream, err := (*pbclient.clientconn).Subscribe(ctx, req)
@@ -310,21 +309,21 @@ func (p *PubSubClient) Start(quit context.Context, in *StartRequest, done ...cha
 							// Explicitly requeue the message, since this subscription is set to autoextend.
 							err = pbclient.RequeueMessage(ctx, msg.Id, in.Subscription)
 							if err != nil {
-								pbclient.logger.Printf("RequeueMessage failed: %v", err)
+								pbclient.logger.Printf("Id=%v RequeueMessage failed: %v", localId, err)
 							} else {
-								pbclient.logger.Printf("Requeued message %s", msg.Id)
+								pbclient.logger.Printf("Id=%v Requeued message %s", localId, msg.Id)
 							}
 						}
 					} else {
-						pbclient.logger.Printf("Callback error: %v", err)
+						pbclient.logger.Printf("Id=%v Callback error: %v", localId, err)
 					}
 				}
 				if ack {
 					err = pbclient.SendAckWithRetry(ctx, msg.Id, in.Subscription)
 					if err != nil {
-						pbclient.logger.Printf("Ack error: %v", err)
+						pbclient.logger.Printf("Id=%v Ack error: %v", localId, err)
 					} else {
-						pbclient.logger.Printf("Acked message %s", msg.Id)
+						pbclient.logger.Printf("Id=%v Acked message %s", localId, msg.Id)
 					}
 				}
 			default: // autoextend for this subscription is set to false, We manually extend it's timeout before timeout ends, We repeat this until the callback returns
@@ -344,9 +343,9 @@ func (p *PubSubClient) Start(quit context.Context, in *StartRequest, done ...cha
 							// Reset timeout for this message
 							err := pbclient.ExtendMessageTimeout(ctx, msg.Id, in.Subscription)
 							if err != nil {
-								pbclient.logger.Printf("ExtendVisibilityTimeout failed: %v", err)
+								pbclient.logger.Printf("Id=%v ExtendVisibilityTimeout failed: %v", localId, err)
 							} else {
-								pbclient.logger.Printf("Extended timeout for message %s", msg.Id)
+								pbclient.logger.Printf("Id=%v Extended timeout for message %s", localId, msg.Id)
 							}
 						}
 					}
@@ -356,19 +355,19 @@ func (p *PubSubClient) Start(quit context.Context, in *StartRequest, done ...cha
 				if err != nil {
 					if r, ok := err.(Requeuer); ok {
 						if r.ShouldRequeue() { // Let our timeout expire naturally, since we are not auto extending.
-							pbclient.logger.Printf("Requeueing message=%v", msg.Id)
+							pbclient.logger.Printf("Id=%v Requeueing message=%v", localId, msg.Id)
 							ack = false
 						}
 					} else {
-						pbclient.logger.Printf("Callback error: %v", err)
+						pbclient.logger.Printf("Id=%v Callback error: %v", localId, err)
 					}
 				}
 				if ack {
 					err = pbclient.SendAckWithRetry(ctx, msg.Id, in.Subscription)
 					if err != nil {
-						pbclient.logger.Printf("Ack error: %v", err)
+						pbclient.logger.Printf("Id=%v Ack error: %v", localId, err)
 					} else {
-						pbclient.logger.Printf("Acked message %s", msg.Id)
+						pbclient.logger.Printf("Id=%v Acked message %s", localId, msg.Id)
 					}
 				}
 
@@ -392,32 +391,32 @@ func (p *PubSubClient) Start(quit context.Context, in *StartRequest, done ...cha
 			if ok {
 				if st.Code() == codes.Unavailable {
 					address = ""
-					p.logger.Printf("Error: %v, retrying in %v", err, sleep)
+					p.logger.Printf("Id=%v Error: %v, retrying in %v", localId, err, sleep)
 					time.Sleep(sleep)
 					continue
 				}
 
 				if st.Code() == codes.Canceled {
-					p.logger.Printf("Start cancelled, exiting")
+					p.logger.Printf("Id=%v Start cancelled, exiting", localId)
 					break
 				}
 			}
 			if strings.Contains(err.Error(), "wrongnode") {
 				node := strings.Split(err.Error(), "|")[1]
 				address = node
-				p.logger.Printf("Stream ended with wrongnode err=%v", err.Error())
+				p.logger.Printf("Id=%v Stream ended with wrongnode err=%v", localId, err.Error())
 				continue // retry immediately
 			}
 			if err == io.EOF {
 				address = ""
-				p.logger.Printf("Stream ended with EOF err=%v, retrying in %v", err.Error(), sleep)
+				p.logger.Printf("Id=%v Stream ended with EOF err=%v, retrying in %v", localId, err.Error(), sleep)
 				time.Sleep(sleep)
 				continue
 			}
-			p.logger.Printf("Start error: %v", err)
+			p.logger.Printf("Id=%v Start error: %v", localId, err)
 			return err
 		}
-		p.logger.Printf("Start exited normally")
+		p.logger.Printf("Id=%v Start exited normally", localId)
 		break
 	}
 
