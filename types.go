@@ -26,8 +26,8 @@ type MessageCallback func(ctx any, data []byte) error
 
 type StartRequest struct {
 	Subscription string
-	Ctx          any // arbitrary data passed to callback
-	Callback     MessageCallback
+	Ctx          any             // arbitrary data passed to callback, it is passed as the first argument to the MessageCallback
+	Callback     MessageCallback // called when a message is received, must contain 2 arguments; any and []byte respectively and must return an error
 }
 
 type SubscribeRequest struct {

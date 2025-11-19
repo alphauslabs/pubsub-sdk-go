@@ -294,7 +294,6 @@ func (p *PubSubClient) Start(quit context.Context, in *StartRequest, done ...cha
 		for {
 			msg, err := stream.Recv()
 			if err != nil {
-				p.logger.Printf("Id=%v Recv error: %v", localId, err)
 				return err
 			}
 			switch {
@@ -689,10 +688,16 @@ func (p *PubSubClient) ExtendMessageTimeout(ctx context.Context, msgId, subscrip
 	}
 
 	var address string
+	limit := 50
+	i := 0
 	for {
 		err := do(address)
 		if err == nil {
 			break
+		}
+
+		if i > limit {
+			return err
 		}
 
 		if st, ok := status.FromError(err); ok {
@@ -701,6 +706,7 @@ func (p *PubSubClient) ExtendMessageTimeout(ctx context.Context, msgId, subscrip
 				btime := backoff.Pause() // backoff time
 				p.logger.Printf("[Extend] Error: %v, retrying in %v", err, btime)
 				time.Sleep(btime)
+				i++
 				continue
 			}
 		}
