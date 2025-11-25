@@ -203,10 +203,10 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 
 	bo := gaxv2.Backoff{
 		Initial: 5 * time.Second,
-		Max:     1 * time.Minute,
+		Max:     30 * time.Second,
 	}
 
-	limit := 20
+	limit := 50
 	n := 0
 	for {
 		err := do()
@@ -218,7 +218,7 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 		st, ok := status.FromError(err)
 		if ok {
 			switch st.Code() {
-			case codes.Unavailable, codes.DeadlineExceeded, codes.ResourceExhausted, codes.Aborted:
+			case codes.Unavailable, codes.DeadlineExceeded, codes.ResourceExhausted:
 				shouldRetry = true
 			}
 		}
