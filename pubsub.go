@@ -295,6 +295,7 @@ func (p *PubSubClient) Start(quit context.Context, in *StartRequest, done ...cha
 			if err != nil {
 				return err
 			}
+			p.logger.Printf("Id=%v Received message=%s", localId, msg.Id)
 			switch {
 			case autoExtend:
 				ack := true
