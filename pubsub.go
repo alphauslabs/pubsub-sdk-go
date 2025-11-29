@@ -188,7 +188,7 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 	}
 
 	do := func() error {
-		conn, err := New()
+		conn, err := c.getClient("") // empty addr means use lb addr
 		if err != nil {
 			return err
 		}
