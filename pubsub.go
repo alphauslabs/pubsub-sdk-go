@@ -192,7 +192,6 @@ func (c *PubSubClient) Publish(ctx context.Context, in *PublishRequest) error {
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
 		_, err = (*conn.clientconn).Publish(ctx, req)
 		if err != nil {
 			return err
